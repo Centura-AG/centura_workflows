@@ -1,0 +1,45 @@
+name: Create Tag from Version
+
+on:
+  workflow_call:
+    inputs:
+      package_path:
+        description: 'Path to the package directory containing __init__.py'
+        required: true
+        type: string
+        default: 'my_repo_name'
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from __init__.py
+        id: version
+        run: |
+          VERSION=$(grep -oP '__version__ = "\K[^"]+' "${{ inputs.package_path }}/__init__.py")
+          echo "version=$VERSION" >> $GITHUB_ENV
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ env.version }}" >/dev/null 2>&1; then
+            echo "Tag exists"
+            exit 0
+          fi
+          echo "create_tag=true" >> $GITHUB_ENV
+
+      - name: Create and push tag
+        if: env.create_tag == 'true'
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@centura.ch"
+          git tag -a "v${{ env.version }}" -m "Version ${{ env.version }}"
+          git push origin "v${{ env.version }}"
