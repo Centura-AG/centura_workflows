@@ -32,6 +32,8 @@ jobs:
 
           # Fetch all tags sorted by version number (assuming semantic versioning)
           TAGS=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
+          
+          echo "$TAGS"
 
           # Check if the new version is greater than any existing tag
           for TAG in $TAGS; do
