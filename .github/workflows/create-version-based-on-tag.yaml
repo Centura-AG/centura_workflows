@@ -7,10 +7,6 @@ on:
         description: 'Path to the package directory containing __init__.py'
         required: true
         type: string
-      pushed_tag:
-        description: 'The tag that was pushed'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -22,26 +18,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Get all existing tags and check if new version is valid
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION=${TAG_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_ENV
+
+      - name: Get current version from __init__.py
+        id: get_current_version
+        run: |
+          CURRENT_VERSION=$(grep -oP '__version__ = "\K[^"]+' "${{ github.event.repository.name }}/__init__.py")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_ENV
+
+      - name: Check if new version is larger than current version
         id: check_tags
         run: |
-          # Extract the version from the tag being processed
-          NEW_VERSION="${{ inputs.pushed_tag }}"
+          # Compare the versions using shell sorting for semantic versioning
+          NEW_VERSION="${{ env.version }}"
+          CURRENT_VERSION="${{ env.current_version }}"
           
-          echo "$NEW_VERSION"
+          echo "Current Version:  $CURRENT_VERSION"
+          echo "New Version:      $NEW_VERSION"
 
-          # Fetch all tags sorted by version number (assuming semantic versioning)
-          TAGS=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
-          
-          echo "$TAGS"
-
-          # Check if the new version is greater than any existing tag
-          for TAG in $TAGS; do
-            if [[ "$(printf '%s\n' "$NEW_VERSION" "$TAG" | sort -V | head -n 1)" != "$NEW_VERSION" ]]; then
-              echo "Error: Version ${{ env.version }} is not larger than the latest tag version"
-              exit 1
-            fi
-          done
+          if [[ "$(printf '%s\n' "$NEW_VERSION" "$CURRENT_VERSION" | sort -V | tail -n 1)" != "$NEW_VERSION" ]]; then
+            echo "Error: Version ${{ env.version }} is not larger than the current version in __init__.py"
+            exit 1
+          fi
 
       - name: Update __init__.py with new version
         run: |
