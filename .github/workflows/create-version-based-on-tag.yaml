@@ -1,0 +1,52 @@
+name: Update Version in __init__.py
+
+on:
+  workflow_call:
+    inputs:
+      package_path:
+        description: 'Path to the package directory containing __init__.py'
+        required: true
+        type: string
+      pushed_tag:
+        description: 'The tag that was pushed'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  update-version-in-init:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Get all existing tags and check if new version is valid
+        id: check_tags
+        run: |
+          # Extract the version from the tag being processed
+          NEW_VERSION="${{ inputs.pushed_tag }}"
+
+          # Fetch all tags sorted by version number (assuming semantic versioning)
+          TAGS=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
+
+          # Check if the new version is greater than any existing tag
+          for TAG in $TAGS; do
+            if [[ "$(printf '%s\n' "$NEW_VERSION" "$TAG" | sort -V | head -n 1)" != "$NEW_VERSION" ]]; then
+              echo "Error: Version ${{ env.version }} is not larger than the latest tag version"
+              exit 1
+            fi
+          done
+
+      - name: Update __init__.py with new version
+        run: |
+          sed -i "s/__version__ = \".*\"/__version__ = \"${{ env.version }}\"/g" "${{ github.event.repository.name }}/__init__.py"
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@centura.ch"
+          git add "${{ github.event.repository.name }}/__init__.py"
+          git commit -m "chore: update __version__ to ${{ env.version }}"
+          git push origin main
