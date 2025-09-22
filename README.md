@@ -23,6 +23,8 @@ The workflow is designed to be reusable using `workflow_call`. It accepts the fo
 The workflow requires `contents: write` permission to create and push tags.
 
 ## Usage Example
+
+### Create tag from Version
 This workflow can be used in another repository as follows:
 
 ```yaml
@@ -42,6 +44,27 @@ jobs:
       contents: write
     with:
       package_path: ${{ github.event.repository.name }}
+```
+
+### Create Version from TAG
+
+```yaml
+name: Version Tag Creator
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  call-version-tag-workflow:
+    uses: Centura-AG/centura_workflows/.github/workflows/create-version-based-on-tag.yaml
+    permissions:
+      contents: write
+    with:
+      package_path: ${{ github.event.repository.name }}
+      pushed_tag: ${{ github.ref_name }}
+
 ```
 
 ## Requirements
