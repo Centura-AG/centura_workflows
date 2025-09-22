@@ -7,6 +7,10 @@ on:
         description: 'Path to the package directory containing __init__.py'
         required: true
         type: string
+      pushed_tag:
+        description: 'The tag that was pushed'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,18 +21,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Fetch full history to resolve branches
+
+      - name: Get the branch name from the tag
+        id: get-branch
+        run: |
+          # Get the commit hash of the tag
+          TAG_COMMIT=$(git rev-parse ${{ github.ref }})
+          # Find the branch containing this commit (prioritize main/master, then any branch)
+          BRANCH_NAME=$(git branch -r --contains $TAG_COMMIT | grep -E 'origin/(main|master)' || git branch -r --contains $TAG_COMMIT | head -n 1 | sed 's/origin\///')
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Checkout the branch (not the tag)
+        if: steps.get-branch.outputs.branch != ''
+        run: |
+          git checkout ${{ steps.get-branch.outputs.branch }}
 
       - name: Extract version from tag
         id: extract_version
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          VERSION=${TAG_NAME#v}
-          echo "version=$VERSION" >> $GITHUB_ENV
+          NEW_VERSION="${{ inputs.pushed_tag }}"
+          echo "version=${NEW_VERSION#v}" >> $GITHUB_ENV
 
       - name: Get current version from __init__.py
         id: get_current_version
         run: |
-          CURRENT_VERSION=$(grep -oP '__version__ = "\K[^"]+' "${{ github.event.repository.name }}/__init__.py")
+          CURRENT_VERSION=$(grep -oP '__version__ = "\K[^"]+' "${{ inputs.package_path }}/__init__.py")
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_ENV
 
       - name: Check if new version is larger than current version
@@ -42,18 +61,27 @@ jobs:
           echo "New Version:      $NEW_VERSION"
 
           if [[ "$(printf '%s\n' "$NEW_VERSION" "$CURRENT_VERSION" | sort -V | tail -n 1)" != "$NEW_VERSION" ]]; then
-            echo "Error: Version ${{ env.version }} is not larger than the current version in __init__.py"
+            echo "Error: Version $NEW_VERSION is not larger than the current version in __init__.py"
             exit 1
           fi
 
       - name: Update __init__.py with new version
         run: |
-          sed -i "s/__version__ = \".*\"/__version__ = \"${{ env.version }}\"/g" "${{ github.event.repository.name }}/__init__.py"
+          sed -i "s/__version__ = \".*\"/__version__ = \"${{ env.version }}\"/g" "${{ inputs.package_path }}/__init__.py"
+          cat "${{ inputs.package_path }}/__init__.py"
 
       - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@centura.ch"
-          git add "${{ github.event.repository.name }}/__init__.py"
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git add "${{ inputs.package_path }}/__init__.py"
           git commit -m "chore: update __version__ to ${{ env.version }}"
-          git push origin main
+          git push
+          echo "STATUS ============"
+          git status
+          echo "TAG =========="
+          git tag -fa ${{ inputs.pushed_tag }} -m "${{ inputs.pushed_tag }}"
+          git push origin --tags --force
+          
