@@ -29,8 +29,8 @@ jobs:
         run: |
           # Get the commit hash of the tag
           TAG_COMMIT=$(git rev-parse ${{ github.ref }})
-          # Find the branch containing this commit (prioritize main/master, then any branch)
-          BRANCH_NAME=$(git branch -r --contains $TAG_COMMIT | grep -E 'origin/(main|master)' || git branch -r --contains $TAG_COMMIT | head -n 1 | sed 's/origin\///')
+          # Find the branch containing this commit (prioritize main/master/develop, then any branch)
+          BRANCH_NAME=$(git branch -r --contains $TAG_COMMIT | grep -E 'origin/(main|master|develop)' || git branch -r --contains $TAG_COMMIT | head -n 1 | sed 's/origin\///')
           echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
       - name: Checkout the branch (not the tag)
