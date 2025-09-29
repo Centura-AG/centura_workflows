@@ -79,5 +79,5 @@ jobs:
           echo "TAG =========="
           git tag -fa ${{ inputs.pushed_tag }} -m "${{ inputs.pushed_tag }}"
           git push origin ${{ inputs.pushed_tag }} --force
-          git push origin ${{ steps.get-branch.outputs.branch }}
+          git push origin develop
           
