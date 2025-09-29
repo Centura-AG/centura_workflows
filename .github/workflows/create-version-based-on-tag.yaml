@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Fetch full history to resolve branches
+          ref: ${{ steps.get-branch.outputs.branch }}
 
       - name: Get the branch name from the tag
         id: get-branch
@@ -32,11 +33,6 @@ jobs:
           # Find the branch containing this commit (prioritize main/master/develop, then any branch)
           BRANCH_NAME=$(git branch -r --contains $TAG_COMMIT | grep -E 'origin/(main|master|develop)' || git branch -r --contains $TAG_COMMIT | head -n 1 | sed 's/origin\///')
           echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-      - name: Checkout the branch (not the tag)
-        if: steps.get-branch.outputs.branch != ''
-        run: |
-          git checkout ${{ steps.get-branch.outputs.branch }}
 
       - name: Extract version from tag
         id: extract_version
