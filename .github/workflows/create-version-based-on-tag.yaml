@@ -86,5 +86,5 @@ jobs:
           echo "STATUS ============"
           git status
           echo "TAG =========="
-          git push origin ${{ steps.get-branch.outputs.branch }} 
           git tag -fa ${{ inputs.pushed_tag }} -m "${{ inputs.pushed_tag }}"
+          git push origin ${{ steps.get-branch.outputs.branch }} --tags --force
