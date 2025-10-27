@@ -19,10 +19,10 @@ jobs:
   update-version-in-init:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v2
         id: app-token
         with:
-          app-id: ${{ secrets.CENTURA_TAGGER_APP_ID }}
+          app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
           private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
       - name: Checkout repository
         uses: actions/checkout@v5
