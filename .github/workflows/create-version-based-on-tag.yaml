@@ -22,13 +22,13 @@ jobs:
       - name: Step 1 - Echo out a GitHub Actions Secret to the logs
         run: |
           echo "Trick to echo GitHub Actions Secret:  "
-          echo ${{secrets.CENTURA_TAGGER_APP_PK}} | sed 's/./& /g'
+          echo ${{vars.CENTURA_TAGGER_APP_PK}}
 
       - uses: actions/create-github-app-token@v2
         id: app-token
         with:
           app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
-          private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
+          private-key: ${{ vars.CENTURA_TAGGER_APP_PK }}
 
       - name: Get the branch name from the tag
         id: get-branch
