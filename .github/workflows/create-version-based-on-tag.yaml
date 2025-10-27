@@ -24,7 +24,7 @@ jobs:
         uses: actions/create-github-app-token@v2
         id: app-token
         with:
-          app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
+          app-id: ${{ secrets.CENTURA_TAGGER_APP_ID }}
           private-key: ${{ vars.CENTURA_TAGGER_APP_PK }}
 
       - name: Checkout repository
