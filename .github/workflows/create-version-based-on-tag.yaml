@@ -29,18 +29,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # Fetch full history to resolve branches
-          ref: ${{ steps.get-branch.outputs.branch }}
+          fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Get the branch name from the tag
         id: get-branch
         run: |
           # Get the commit hash of the tag
-          TAG_COMMIT=$(git rev-parse ${{ github.ref }})
-          # Find the branch containing this commit (prioritize main/master/develop, then any branch)
-          BRANCH_NAME=$(git branch -r --contains $TAG_COMMIT | grep -E 'origin/(main|master|develop)' || git branch -r --contains $TAG_COMMIT | head -n 1 | sed 's/origin\///')
+          TAG_COMMIT=$(git rev-list -n 1 "${{ inputs.pushed_tag }}")
+          echo "Tag commit: $TAG_COMMIT"
+
+          # Try to find a branch containing this commit
+          BRANCH_NAME=$(git branch -r --contains "$TAG_COMMIT" | grep -E 'origin/(develop|main|master)' | head -n 1 | sed 's/origin\///')
           echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "Detected branch: $BRANCH_NAME"
+
+      - name: Switch to detected branch
+        if: steps.get-branch.outputs.branch != ''
+        run: |
+          git checkout ${{ steps.get-branch.outputs.branch }}
+          echo "Now on branch $(git branch --show-current)"
 
       - name: Extract version from tag
         id: extract_version
