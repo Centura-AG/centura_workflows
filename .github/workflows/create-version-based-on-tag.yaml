@@ -11,6 +11,10 @@ on:
         description: 'The tag that was pushed'
         required: true
         type: string
+    secrets:
+      CENTURA_TAGGER_APP_PK:
+        description: 'Private key for the GitHub App Centura Tagger'
+        required: true
 
 permissions:
   contents: write
