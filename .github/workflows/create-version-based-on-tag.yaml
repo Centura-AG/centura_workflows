@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   update-version-in-init:
+    if: github.actor != 'centura-tagger[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Get token to push directly to develop
@@ -86,8 +87,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name "${{ github.actor }}"
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --global user.name "centura-tagger[bot]"
+          git config --global user.email "centura-tagger[bot]@users.noreply.github.com"
           git switch ${{ steps.get-branch.outputs.branch }}
           git add "${{ inputs.package_path }}/__init__.py"
           git commit -m "chore: update __version__ to ${{ env.version }}"
