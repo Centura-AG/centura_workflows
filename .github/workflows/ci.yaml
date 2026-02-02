@@ -99,7 +99,7 @@ jobs:
       - name: Install app
         working-directory: /home/runner/frappe-bench
         run: |
-          bench get-app ${{ inputs.app_path }} $GITHUB_WORKSPACE
+          bench get-app ${{ inputs.app_path }} $GITHUB_WORKSPACE --resolve-deps
           bench setup requirements --dev
 
       - name: Configure site
