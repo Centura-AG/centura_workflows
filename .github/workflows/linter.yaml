@@ -11,7 +11,7 @@ on:
         description: 'Python version to use'
         required: false
         type: string
-        default: '3.10'
+        default: '3.12'
 
 permissions:
   contents: read
