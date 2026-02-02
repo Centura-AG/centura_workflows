@@ -7,7 +7,7 @@ on:
         description: 'Branch to run tests for'
         required: false
         type: string
-        default: 'develop'
+        default: 'version-15'
       app_path:
         description: 'Path to your app'
         required: true
