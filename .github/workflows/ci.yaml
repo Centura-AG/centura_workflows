@@ -85,7 +85,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y redis-tools mariadb-client wkhtmltopdf xvfb libfontconfig
+          sudo apt-get install -y redis-tools mariadb-client wkhtmltopdf xvfb libfontconfig libcairo2-dev pkg-config
           pip install frappe-bench
 
       - name: Initialize Frappe Bench
