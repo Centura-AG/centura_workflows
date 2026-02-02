@@ -24,6 +24,7 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
     name: Server
@@ -60,25 +61,63 @@ jobs:
           node-version: 24
           check-latest: true
 
-      - name: Install pip dependencies
+      - name: Add to Hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            ${{ runner.os }}-
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+            ${{ runner.os }}-
+
+      - name: Install dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-tools mariadb-client wkhtmltopdf xvfb libfontconfig
           pip install frappe-bench
 
-      - name: Bench init
+      - name: Initialize Frappe Bench
         run: |
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
+          bench init --skip-redis-config-generation --frappe-branch ${{ inputs.branch }} --python "$(which python)" ~/frappe-bench
+
+      - name: Get app name
+        id: app_name
+        run: echo "name=$(basename ${{ inputs.app_path }})" >> $GITHUB_OUTPUT
 
       - name: Install app
         working-directory: /home/runner/frappe-bench
         run: |
           bench get-app ${{ inputs.app_path }} $GITHUB_WORKSPACE
           bench setup requirements --dev
+
+      - name: Configure site
+        working-directory: /home/runner/frappe-bench
+        run: |
+          bench set-config -g db_host 127.0.0.1
+          bench set-config -g redis_cache redis://127.0.0.1:13000
+          bench set-config -g redis_queue redis://127.0.0.1:11000
           bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app ${{ inputs.app_path }}
-          bench build
+          bench --site test_site install-app ${{ steps.app_name.outputs.name }}
+
+      - name: Build assets
+        working-directory: /home/runner/frappe-bench
+        run: |
+          bench build --app ${{ steps.app_name.outputs.name }}
 
       - name: Run tests
         working-directory: /home/runner/frappe-bench
         run: |
           bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app ${{ inputs.app_path }}
+          bench --site test_site run-tests --app ${{ steps.app_name.outputs.name }}
