@@ -51,7 +51,7 @@ bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
 
 if [ -n "$ADDITIONAL_APPS" ]; then
     for app in $ADDITIONAL_APPS; do
-        bench get-app "https://${ACCESS_TOKEN}@github.com/$app" --branch "$githubbranch" || bench get-app "https://${ACCESS_TOKEN}@github.com/$app"
+        bench get-app "https://github.com/$app" --branch "$githubbranch" || bench get-app "https://github.com/$app"
     done
 fi
 
