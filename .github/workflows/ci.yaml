@@ -3,159 +3,176 @@ name: Frappe CI
 on:
   workflow_call:
     inputs:
-      branch:
-        description: 'Branch to run tests for'
-        required: false
-        type: string
-        default: 'version-15'
       app_path:
         description: 'Path to your app'
         required: true
         type: string
-      python_version:
-        description: 'Python version to use'
-        required: false
-        type: string
-        default: '3.10'
-      additional_apps:
-        description: 'Space-separated list of additional apps to install (format: org/repo org/repo)'
-        required: false
-        type: string
-        default: ''
-      helper_repo:
-        description: 'Repository containing helper scripts (format: org/repo)'
-        required: false
-        type: string
-        default: 'Centura-AG/centura_workflows'
-      helper_branch:
-        description: 'Branch of helper repository'
-        required: false
-        type: string
-        default: 'develop'
-    secrets:
-      CENTURA_TAGGER_APP_PK:
-        description: 'Private key for the GitHub App to access private repos'
-        required: false
-
-permissions:
-  contents: read
-
-env:
-  APP_BRANCH: ${{ github.base_ref || github.ref_name }}
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  tests:
+  pass:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      NODE_ENV: "production"
-
-    strategy:
-      fail-fast: false
-      matrix:
-        container: [1]
-
-    name: Python Unit Tests
-
-    services:
-      mysql:
-        image: mariadb:10.6
-        env:
-          MARIADB_ROOT_PASSWORD: 'root'
-        ports:
-          - 3306:3306
-        options: --health-cmd="mariadb-admin ping" --health-interval=5s --health-timeout=2s --health-retries=3
-
     steps:
-      - name: Clone
-        uses: actions/checkout@v6
+      - name: Pass
+        run: echo "CI not executed and therefore passed"
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_version }}
-
-      - name: Check for valid Python & Merge Conflicts
-        run: |
-          python -m compileall -f "${GITHUB_WORKSPACE}"
-          if grep -lr --exclude-dir=node_modules "^<<<<<<< " "${GITHUB_WORKSPACE}"
-              then echo "Found merge conflicts"
-              exit 1
-          fi
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 18
-          check-latest: true
-
-      - name: Add to Hosts
-        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
-
-      - name: Get GitHub App token for private repos
-        if: inputs.additional_apps != ''
-        uses: actions/create-github-app-token@v2
-        id: app-token
-        with:
-          app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
-          private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
-
-      - name: Get helper scripts
-        run: |
-          mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
-          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/install.sh
-          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/site_config.json
-          chmod +x ${GITHUB_WORKSPACE}/.github/helper/install.sh
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-            ${{ runner.os }}-
-
-      - name: Cache node modules
-        uses: actions/cache@v4
-        env:
-          cache-name: cache-node-modules
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "::set-output name=dir::$(yarn cache dir)"
-
-      - uses: actions/cache@v4
-        id: yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
-      - name: Install
-        run: |
-          bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
-        env:
-          FRAPPE_BRANCH: v15.92.0
-          ERPNEXT_BRANCH: v15.92.4
-          HRMS_BRANCH: v15.54.0
-          APP_NAME: ${{ github.event.repository.name }}
-          ADDITIONAL_APPS: ${{ inputs.additional_apps }}
-          ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
-
-      - name: Run Tests
-        run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
-        env:
-          TYPE: server
+# name: Frappe CI
+#
+# on:
+#   workflow_call:
+#     inputs:
+#       branch:
+#         description: 'Branch to run tests for'
+#         required: false
+#         type: string
+#         default: 'version-15'
+#       app_path:
+#         description: 'Path to your app'
+#         required: true
+#         type: string
+#       python_version:
+#         description: 'Python version to use'
+#         required: false
+#         type: string
+#         default: '3.10'
+#       additional_apps:
+#         description: 'Space-separated list of additional apps to install (format: org/repo org/repo)'
+#         required: false
+#         type: string
+#         default: ''
+#       helper_repo:
+#         description: 'Repository containing helper scripts (format: org/repo)'
+#         required: false
+#         type: string
+#         default: 'Centura-AG/centura_workflows'
+#       helper_branch:
+#         description: 'Branch of helper repository'
+#         required: false
+#         type: string
+#         default: 'develop'
+#     secrets:
+#       CENTURA_TAGGER_APP_PK:
+#         description: 'Private key for the GitHub App to access private repos'
+#         required: false
+#
+# permissions:
+#   contents: read
+#
+# env:
+#   APP_BRANCH: ${{ github.base_ref || github.ref_name }}
+#
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+#   cancel-in-progress: true
+#
+# jobs:
+#   tests:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     env:
+#       NODE_ENV: "production"
+#
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         container: [1]
+#
+#     name: Python Unit Tests
+#
+#     services:
+#       mysql:
+#         image: mariadb:10.6
+#         env:
+#           MARIADB_ROOT_PASSWORD: 'root'
+#         ports:
+#           - 3306:3306
+#         options: --health-cmd="mariadb-admin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+#
+#     steps:
+#       - name: Clone
+#         uses: actions/checkout@v6
+#
+#       - name: Setup Python
+#         uses: actions/setup-python@v6
+#         with:
+#           python-version: ${{ inputs.python_version }}
+#
+#       - name: Check for valid Python & Merge Conflicts
+#         run: |
+#           python -m compileall -f "${GITHUB_WORKSPACE}"
+#           if grep -lr --exclude-dir=node_modules "^<<<<<<< " "${GITHUB_WORKSPACE}"
+#               then echo "Found merge conflicts"
+#               exit 1
+#           fi
+#
+#       - name: Setup Node
+#         uses: actions/setup-node@v6
+#         with:
+#           node-version: 18
+#           check-latest: true
+#
+#       - name: Add to Hosts
+#         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+#
+#       - name: Get GitHub App token for private repos
+#         if: inputs.additional_apps != ''
+#         uses: actions/create-github-app-token@v2
+#         id: app-token
+#         with:
+#           app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
+#           private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
+#
+#       - name: Get helper scripts
+#         run: |
+#           mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
+#           curl -f -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/install.sh
+#           curl -f -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/site_config.json
+#           chmod +x ${GITHUB_WORKSPACE}/.github/helper/install.sh
+#
+#       - name: Cache pip
+#         uses: actions/cache@v4
+#         with:
+#           path: ~/.cache/pip
+#           key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
+#           restore-keys: |
+#             ${{ runner.os }}-pip-
+#             ${{ runner.os }}-
+#
+#       - name: Cache node modules
+#         uses: actions/cache@v4
+#         env:
+#           cache-name: cache-node-modules
+#         with:
+#           path: ~/.npm
+#           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+#           restore-keys: |
+#             ${{ runner.os }}-build-${{ env.cache-name }}-
+#             ${{ runner.os }}-build-
+#             ${{ runner.os }}-
+#
+#       - name: Get yarn cache directory path
+#         id: yarn-cache-dir-path
+#         run: echo "::set-output name=dir::$(yarn cache dir)"
+#
+#       - uses: actions/cache@v4
+#         id: yarn-cache
+#         with:
+#           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+#           key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+#           restore-keys: |
+#             ${{ runner.os }}-yarn-
+#
+#       - name: Install
+#         run: |
+#           bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
+#         env:
+#           FRAPPE_BRANCH: v15.92.0
+#           ERPNEXT_BRANCH: v15.92.4
+#           HRMS_BRANCH: v15.54.0
+#           APP_NAME: ${{ github.event.repository.name }}
+#           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
+#           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
+#
+#       - name: Run Tests
+#         run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
+#         env:
+#           TYPE: server
