@@ -33,7 +33,7 @@ on:
         type: string
         default: 'develop'
     secrets:
-      CENTURA_CI_APP_PK:
+      CENTURA_TAGGER_APP_PK:
         description: 'Private key for the GitHub App to access private repos'
         required: false
 
@@ -101,8 +101,8 @@ jobs:
         uses: actions/create-github-app-token@v2
         id: app-token
         with:
-          app-id: ${{ vars.CENTURA_CI_APP_ID }}
-          private-key: ${{ secrets.CENTURA_CI_APP_PK }}
+          app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
+          private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
 
       - name: Get helper scripts
         run: |
