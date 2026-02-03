@@ -139,6 +139,7 @@ jobs:
           FRAPPE_BRANCH: v15.92.0
           ERPNEXT_BRANCH: v15.92.4
           HRMS_BRANCH: v15.54.0
+          APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
 
       - name: Run Tests

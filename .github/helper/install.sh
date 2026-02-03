@@ -49,6 +49,8 @@ bench get-app "https://github.com/frappe/payments" --branch develop # To satisfy
 bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch"
 bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
 
+bench get-app "${GITHUB_WORKSPACE}"
+
 if [ -n "$ADDITIONAL_APPS" ]; then
     for app in $ADDITIONAL_APPS; do
         bench get-app "https://github.com/$app" --branch "$githubbranch" || bench get-app "https://github.com/$app"
@@ -64,6 +66,8 @@ bench --site test_site reinstall --yes
 bench --verbose --site test_site install-app payments
 bench --verbose --site test_site install-app erpnext
 bench --verbose --site test_site install-app hrms
+
+bench --verbose --site test_site install-app "$APP_NAME"
 
 if [ -n "$ADDITIONAL_APPS" ]; then
     for app in $ADDITIONAL_APPS; do
