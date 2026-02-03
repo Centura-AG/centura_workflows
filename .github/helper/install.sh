@@ -45,6 +45,7 @@ sed -i 's/schedule:/# schedule:/g' Procfile
 sed -i 's/socketio:/# socketio:/g' Procfile
 sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
+bench get-app "https://github.com/frappe/payments" --branch develop # To satisfy dependencies of erpnext payment_request.py
 bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch"
 bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
 
@@ -60,6 +61,7 @@ bench start &>> ~/frappe-bench/bench_start.log &
 CI=Yes bench build --app frappe &
 bench --site test_site reinstall --yes
 
+bench --verbose --site test_site install-app payments
 bench --verbose --site test_site install-app erpnext
 bench --verbose --site test_site install-app hrms
 
