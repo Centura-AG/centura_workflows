@@ -49,7 +49,7 @@ jobs:
 
     services:
       mysql:
-        image: mariadb:10.6
+        image: mariadb:12.1
         env:
           MARIADB_ROOT_PASSWORD: 'root'
         ports:
