@@ -139,7 +139,7 @@ jobs:
           FRAPPE_BRANCH: v15.92.0
           ERPNEXT_BRANCH: v15.92.4
           HRMS_BRANCH: v15.54.0
-          ADDITIONAL_APPS: ${{ inputs.additional_apps }}
+          ADDITIONAL_APPS: ${{ github.repository }} ${{ inputs.additional_apps }}
 
       - name: Run Tests
         run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
