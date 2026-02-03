@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: '3.10'
+      additional_apps:
+        description: 'Space-separated list of additional apps to install (format: org/repo org/repo)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -114,8 +119,10 @@ jobs:
         run: |
           bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
         env:
-          FRAPPE_USER: ${{ github.event.inputs.user }}
-          FRAPPE_BRANCH: ${{ github.event.inputs.branch }}
+          FRAPPE_BRANCH: v15.92.0
+          ERPNEXT_BRANCH: v15.92.4
+          HRMS_BRANCH: v15.54.0
+          ADDITIONAL_APPS: ${{ inputs.additional_apps }}
 
       - name: Run Tests
         run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
