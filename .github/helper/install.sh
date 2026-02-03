@@ -45,17 +45,17 @@ sed -i 's/schedule:/# schedule:/g' Procfile
 sed -i 's/socketio:/# socketio:/g' Procfile
 sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
-bench get-app "https://github.com/frappe/payments" --branch develop  --resolve-deps # To satisfy dependencies of erpnext payment_request.py
-bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
-bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch" --resolve-deps
-
-bench get-app "${GITHUB_WORKSPACE}" --resolve-deps
+bench get-app "https://github.com/frappe/payments" --branch develop # To satisfy dependencies of erpnext payment_request.py
+bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch  --resolve-deps"
+bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
 
 if [ -n "$ADDITIONAL_APPS" ]; then
     for app in $ADDITIONAL_APPS; do
         bench get-app "https://github.com/$app" --branch "$githubbranch" || bench get-app "https://github.com/$app"
     done
 fi
+
+bench get-app "$APP_NAME" "${GITHUB_WORKSPACE}"
 
 bench setup requirements --dev
 
