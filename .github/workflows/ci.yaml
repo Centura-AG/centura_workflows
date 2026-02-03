@@ -32,6 +32,10 @@ on:
         required: false
         type: string
         default: 'develop'
+    secrets:
+      CENTURA_CI_APP_PK:
+        description: 'Private key for the GitHub App to access private repos'
+        required: false
 
 permissions:
   contents: read
@@ -92,6 +96,14 @@ jobs:
       - name: Add to Hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
 
+      - name: Get GitHub App token for private repos
+        if: inputs.additional_apps != ''
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.CENTURA_CI_APP_ID }}
+          private-key: ${{ secrets.CENTURA_CI_APP_PK }}
+
       - name: Get helper scripts
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
@@ -141,6 +153,7 @@ jobs:
           HRMS_BRANCH: v15.54.0
           APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
+          ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Run Tests
         run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
