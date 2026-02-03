@@ -26,7 +26,7 @@ on:
         description: 'Repository containing helper scripts (format: org/repo)'
         required: false
         type: string
-        default: 'centura/centura_workflows'
+        default: 'Centura-AG/centura_workflows'
       helper_branch:
         description: 'Branch of helper repository'
         required: false
