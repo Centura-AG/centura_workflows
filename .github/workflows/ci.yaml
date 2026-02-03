@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: [1, 2]
+        container: [1]
 
     name: Python Unit Tests
 
@@ -81,6 +81,13 @@ jobs:
 
       - name: Add to Hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Get helper scripts
+        run: |
+          mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
+          curl -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/centura/centura_workflows/main/.github/helper/install.sh
+          curl -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/centura/centura_workflows/main/.github/helper/site_config.json
+          chmod +x ${GITHUB_WORKSPACE}/.github/helper/install.sh
 
       - name: Cache pip
         uses: actions/cache@v4
