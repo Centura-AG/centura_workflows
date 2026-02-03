@@ -22,6 +22,16 @@ on:
         required: false
         type: string
         default: ''
+      helper_repo:
+        description: 'Repository containing helper scripts (format: org/repo)'
+        required: false
+        type: string
+        default: 'centura/centura_workflows'
+      helper_branch:
+        description: 'Branch of helper repository'
+        required: false
+        type: string
+        default: 'develop'
 
 permissions:
   contents: read
@@ -85,8 +95,8 @@ jobs:
       - name: Get helper scripts
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
-          curl -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/centura/centura_workflows/main/.github/helper/install.sh
-          curl -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/centura/centura_workflows/main/.github/helper/site_config.json
+          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/install.sh
+          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/site_config.json
           chmod +x ${GITHUB_WORKSPACE}/.github/helper/install.sh
 
       - name: Cache pip
