@@ -36,7 +36,6 @@ jobs:
 
       - uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.GH_PAT }}
           commit-message: 'chore: apply formatting'
           branch: chore/auto-format
           title: 'chore: apply formatting'
