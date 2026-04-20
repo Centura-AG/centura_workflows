@@ -8,6 +8,9 @@ on:
         required: false
         type: string
         default: '3.10'
+    secrets:
+      GH_PAT:
+        required: true
 
 permissions:
   contents: write
@@ -36,6 +39,7 @@ jobs:
 
       - uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.GH_PAT }}
           commit-message: 'chore: apply formatting'
           branch: chore/auto-format
           title: 'chore: apply formatting'
