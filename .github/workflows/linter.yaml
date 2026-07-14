@@ -11,7 +11,12 @@ on:
         description: 'Python version to use'
         required: false
         type: string
-        default: '3.10'
+        default: '3.14'
+      node_version:
+        description: 'Node version to use'
+        required: false
+        type: string
+        default: '24'
 
 permissions:
   contents: read
@@ -27,6 +32,14 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
           cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install pinned Node tooling
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+
       - uses: pre-commit/action@v3.0.1
 
       - name: Download Semgrep rules
@@ -36,4 +49,3 @@ jobs:
         run: |
           pip install semgrep
           semgrep ci --config ./frappe-semgrep-rules/rules --config r/python.lang.correctness
-

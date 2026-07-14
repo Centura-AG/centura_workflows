@@ -14,6 +14,7 @@ githubbranch=${GITHUB_BASE_REF:-${GITHUB_REF##*/}}
 frappebranch=${FRAPPE_BRANCH:-$githubbranch}
 erpnextbranch=${ERPNEXT_BRANCH:-$githubbranch}
 hrmsbranch=${HRMS_BRANCH:-$githubbranch}
+paymentsbranch=${PAYMENTS_BRANCH:-$frappebranch}
 
 git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
 bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
@@ -45,13 +46,18 @@ sed -i 's/schedule:/# schedule:/g' Procfile
 sed -i 's/socketio:/# socketio:/g' Procfile
 sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
-bench get-app "https://github.com/frappe/payments" --branch develop # To satisfy dependencies of erpnext payment_request.py
+bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
 bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
 bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
 
 if [ -n "$ADDITIONAL_APPS" ]; then
     for app in $ADDITIONAL_APPS; do
-        bench get-app "https://github.com/$app" --branch "$githubbranch" || bench get-app "https://github.com/$app"
+        if [ -n "$ACCESS_TOKEN" ]; then
+            app_url="https://x-access-token:${ACCESS_TOKEN}@github.com/$app"
+        else
+            app_url="https://github.com/$app"
+        fi
+        bench get-app "$app_url" --branch "$githubbranch" || bench get-app "$app_url"
     done
 fi
 
