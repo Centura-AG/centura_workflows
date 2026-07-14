@@ -102,11 +102,6 @@ jobs:
     env:
       NODE_ENV: 'production'
 
-    strategy:
-      fail-fast: false
-      matrix:
-        container: [1]
-
     services:
       mysql:
         image: mariadb:11.8
@@ -194,6 +189,9 @@ jobs:
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Run Tests
-        run: cd ~/frappe-bench/ && bench --site test_site run-parallel-tests --app ${{ inputs.app_path }} --total-builds ${{ strategy.job-total }} --build-number ${{ matrix.container }}
+        run: |
+          cd ~/frappe-bench/
+          bench --site test_site set-config allow_tests true
+          bench --site test_site run-tests --app ${{ inputs.app_path }}
         env:
           TYPE: server
