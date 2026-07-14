@@ -136,6 +136,7 @@ jobs:
         with:
           app-id: ${{ vars.CENTURA_TAGGER_APP_ID }}
           private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
+          owner: ${{ github.repository_owner }}
 
       - name: Get helper scripts
         run: |
