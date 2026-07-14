@@ -37,8 +37,8 @@ jobs:
           node-version: ${{ inputs.node_version }}
 
       - name: Install pinned Node tooling
-        if: hashFiles('package-lock.json') != ''
-        run: npm ci
+        if: hashFiles('yarn.lock') != ''
+        run: yarn install --frozen-lockfile
 
       - uses: pre-commit/action@v3.0.1
 
