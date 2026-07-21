@@ -32,6 +32,14 @@ on:
         required: false
         type: string
         default: '24'
+      install_apps:
+        description: >-
+          Frappe-stack apps to install on the test site: 'erpnext hrms' (default),
+          'erpnext', or 'none' (frappe only). hrms implies erpnext; payments is
+          installed automatically with erpnext.
+        required: false
+        type: string
+        default: 'erpnext hrms'
       additional_apps:
         description: 'Space-separated list of additional apps to install (format: org/repo org/repo)'
         required: false
@@ -165,6 +173,18 @@ jobs:
           hrmsbranch=${HRMS_BRANCH:-$githubbranch}
           paymentsbranch=${PAYMENTS_BRANCH:-$frappebranch}
 
+          stackapps=${INSTALL_APPS:-"erpnext hrms"}
+          if [ "$stackapps" = "none" ]; then stackapps=""; fi
+          with_erpnext=false
+          with_hrms=false
+          for token in $stackapps; do
+              case "$token" in
+                  erpnext) with_erpnext=true ;;
+                  hrms) with_hrms=true; with_erpnext=true ;;
+                  *) echo "Unknown install_apps token: '$token' (allowed: erpnext, hrms, none)"; exit 1 ;;
+              esac
+          done
+
           git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
           bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
 
@@ -195,9 +215,13 @@ jobs:
           sed -i 's/socketio:/# socketio:/g' Procfile
           sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
-          bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
-          bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
-          bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+          if [ "$with_erpnext" = true ]; then
+              bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
+              bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
+          fi
+          if [ "$with_hrms" = true ]; then
+              bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+          fi
 
           if [ -n "$ADDITIONAL_APPS" ]; then
               for app in $ADDITIONAL_APPS; do
@@ -218,9 +242,13 @@ jobs:
           CI=Yes bench build --app frappe &
           bench --site test_site reinstall --yes
 
-          bench --verbose --site test_site install-app payments
-          bench --verbose --site test_site install-app erpnext
-          bench --verbose --site test_site install-app hrms
+          if [ "$with_erpnext" = true ]; then
+              bench --verbose --site test_site install-app payments
+              bench --verbose --site test_site install-app erpnext
+          fi
+          if [ "$with_hrms" = true ]; then
+              bench --verbose --site test_site install-app hrms
+          fi
 
           bench --verbose --site test_site install-app "$APP_NAME"
 
@@ -246,7 +274,6 @@ jobs:
               "root_login": "root",
               "root_password": "root",
               "host_name": "http://test_site:8000",
-              "install_apps": ["payments", "erpnext"],
               "throttle_user_limit": 100
           }
           SITE_CONFIG_EOF
@@ -285,6 +312,7 @@ jobs:
           FRAPPE_BRANCH: ${{ inputs.frappe_branch }}
           ERPNEXT_BRANCH: ${{ inputs.erpnext_branch }}
           HRMS_BRANCH: ${{ inputs.hrms_branch }}
+          INSTALL_APPS: ${{ inputs.install_apps }}
           APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
