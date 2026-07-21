@@ -45,6 +45,15 @@ on:
         required: false
         type: string
         default: ''
+      use_bench_cache:
+        description: >-
+          Cache the built bench (clones, venv, assets) and a dump of the test-site
+          database for a week and restore them on subsequent runs. Biggest win for
+          repos that install erpnext/hrms. The BENCH_CACHE_VERSION repository
+          variable busts the cache manually.
+        required: false
+        type: boolean
+        default: false
       helper_repo:
         description: 'Repository containing helper scripts (format: org/repo)'
         required: false
@@ -125,6 +134,7 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v6
+        id: setup-python
         with:
           python-version: ${{ inputs.python_version }}
 
@@ -185,11 +195,13 @@ jobs:
               esac
           done
 
-          git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
-          bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
-
-          mkdir ~/frappe-bench/sites/test_site
-          cp -r "${GITHUB_WORKSPACE}/.github/helper/site_config.json" ~/frappe-bench/sites/test_site/
+          install_whktml() {
+              wget -O /tmp/wkhtmltox.tar.xz https://github.com/frappe/wkhtmltopdf/raw/master/wkhtmltox-0.12.3_linux-generic-amd64.tar.xz
+              tar -xf /tmp/wkhtmltox.tar.xz -C /tmp
+              sudo mv /tmp/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf
+              sudo chmod o+x /usr/local/bin/wkhtmltopdf
+          }
+          install_whktml &
 
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
@@ -200,54 +212,86 @@ jobs:
 
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "FLUSH PRIVILEGES"
 
-          install_whktml() {
-              wget -O /tmp/wkhtmltox.tar.xz https://github.com/frappe/wkhtmltopdf/raw/master/wkhtmltox-0.12.3_linux-generic-amd64.tar.xz
-              tar -xf /tmp/wkhtmltox.tar.xz -C /tmp
-              sudo mv /tmp/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf
-              sudo chmod o+x /usr/local/bin/wkhtmltopdf
+          get_additional_apps() {
+              if [ -n "$ADDITIONAL_APPS" ]; then
+                  for app in $ADDITIONAL_APPS; do
+                      if [ -n "$ACCESS_TOKEN" ]; then
+                          app_url="https://x-access-token:${ACCESS_TOKEN}@github.com/$app"
+                      else
+                          app_url="https://github.com/$app"
+                      fi
+                      rm -rf "apps/$(basename "$app")"
+                      bench get-app "$app_url" --branch "$githubbranch" || bench get-app "$app_url"
+                      git -C "apps/$(basename "$app")" remote set-url origin "https://github.com/$app"
+                  done
+              fi
           }
-          install_whktml &
 
-          cd ~/frappe-bench || exit
-
-          sed -i 's/watch:/# watch:/g' Procfile
-          sed -i 's/schedule:/# schedule:/g' Procfile
-          sed -i 's/socketio:/# socketio:/g' Procfile
-          sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
-
-          if [ "$with_erpnext" = true ]; then
-              bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
-              bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
-          fi
-          if [ "$with_hrms" = true ]; then
-              bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+          if [ "$BENCH_CACHE_HIT" = "true" ] && [ ! -f ~/frappe-bench/site_dump.sql.gz ]; then
+              echo "Restored bench cache has no site_dump.sql.gz - rebuilding from scratch"
+              rm -rf ~/frappe-bench
+              BENCH_CACHE_HIT=""
           fi
 
-          if [ -n "$ADDITIONAL_APPS" ]; then
-              for app in $ADDITIONAL_APPS; do
-                  if [ -n "$ACCESS_TOKEN" ]; then
-                      app_url="https://x-access-token:${ACCESS_TOKEN}@github.com/$app"
-                  else
-                      app_url="https://github.com/$app"
-                  fi
-                  bench get-app "$app_url" --branch "$githubbranch" || bench get-app "$app_url"
-              done
-          fi
+          if [ "$BENCH_CACHE_HIT" = "true" ]; then
+              echo "Bench cache hit - restoring test site from dump"
+              cd ~/frappe-bench || exit
 
-          bench get-app "$APP_NAME" "${GITHUB_WORKSPACE}"
+              gunzip -c site_dump.sql.gz | mariadb --host 127.0.0.1 --port 3306 -u root -proot test_frappe
 
-          bench setup requirements --dev
+              get_additional_apps
 
-          bench start &>> ~/frappe-bench/bench_start.log &
-          CI=Yes bench build --app frappe &
-          bench --site test_site reinstall --yes
+              rm -rf "apps/${APP_NAME}"
+              bench get-app "$APP_NAME" "${GITHUB_WORKSPACE}"
 
-          if [ "$with_erpnext" = true ]; then
-              bench --verbose --site test_site install-app payments
-              bench --verbose --site test_site install-app erpnext
-          fi
-          if [ "$with_hrms" = true ]; then
-              bench --verbose --site test_site install-app hrms
+              bench setup requirements --dev
+
+              bench start &>> ~/frappe-bench/bench_start.log &
+          else
+              git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
+              bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
+
+              mkdir ~/frappe-bench/sites/test_site
+              cp -r "${GITHUB_WORKSPACE}/.github/helper/site_config.json" ~/frappe-bench/sites/test_site/
+
+              cd ~/frappe-bench || exit
+
+              sed -i 's/watch:/# watch:/g' Procfile
+              sed -i 's/schedule:/# schedule:/g' Procfile
+              sed -i 's/socketio:/# socketio:/g' Procfile
+              sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
+
+              if [ "$with_erpnext" = true ]; then
+                  bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
+                  bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
+              fi
+              if [ "$with_hrms" = true ]; then
+                  bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+              fi
+
+              get_additional_apps
+
+              bench get-app "$APP_NAME" "${GITHUB_WORKSPACE}"
+
+              bench setup requirements --dev
+
+              bench start &>> ~/frappe-bench/bench_start.log &
+              CI=Yes bench build --app frappe & build_pid=$!
+              bench --site test_site reinstall --yes
+
+              if [ "$with_erpnext" = true ]; then
+                  bench --verbose --site test_site install-app payments
+                  bench --verbose --site test_site install-app erpnext
+              fi
+              if [ "$with_hrms" = true ]; then
+                  bench --verbose --site test_site install-app hrms
+              fi
+
+              if [ "$USE_BENCH_CACHE" = "true" ]; then
+                  wait "$build_pid" || true
+                  echo "Dumping test site database for bench cache"
+                  mariadb-dump --host 127.0.0.1 --port 3306 -u root -proot --single-transaction --quick --default-character-set=utf8mb4 test_frappe | gzip > site_dump.sql.gz
+              fi
           fi
 
           bench --verbose --site test_site install-app "$APP_NAME"
@@ -305,6 +349,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-
 
+      - name: Compute bench cache key
+        id: bench-key
+        if: inputs.use_bench_cache
+        run: |
+          apps_slug=$(echo "${INSTALL_APPS:-none}" | tr -cs 'a-zA-Z0-9' '-')
+          echo "key=bench-v${BENCH_CACHE_VERSION:-1}-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-node${{ inputs.node_version }}-${{ inputs.frappe_branch }}-${{ inputs.erpnext_branch }}-${{ inputs.hrms_branch }}-${apps_slug}-${{ steps.cache-week.outputs.week }}" >> "$GITHUB_OUTPUT"
+        env:
+          BENCH_CACHE_VERSION: ${{ vars.BENCH_CACHE_VERSION }}
+          INSTALL_APPS: ${{ inputs.install_apps }}
+
+      - name: Restore bench cache
+        id: bench-cache
+        if: inputs.use_bench_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/frappe-bench
+          key: ${{ steps.bench-key.outputs.key }}
+
       - name: Install
         run: |
           bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
@@ -316,6 +378,16 @@ jobs:
           APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
+          USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}
+          BENCH_CACHE_HIT: ${{ steps.bench-cache.outputs.cache-hit }}
+
+      - name: Save bench cache
+        if: inputs.use_bench_cache && steps.bench-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: ~/frappe-bench
+          key: ${{ steps.bench-key.outputs.key }}
 
       - name: Run Tests
         run: |
