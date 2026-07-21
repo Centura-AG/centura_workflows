@@ -43,10 +43,10 @@ on:
         type: string
         default: 'Centura-AG/centura_workflows'
       helper_branch:
-        description: 'Branch of helper repository'
+        description: 'Escape hatch: fetch install.sh/site_config.json from this ref of helper_repo instead of the scripts embedded in this workflow'
         required: false
         type: string
-        default: 'develop'
+        default: ''
     secrets:
       CENTURA_TAGGER_APP_PK:
         description: 'Private key for the GitHub App to access private repos'
@@ -138,33 +138,133 @@ jobs:
           private-key: ${{ secrets.CENTURA_TAGGER_APP_PK }}
           owner: ${{ github.repository_owner }}
 
-      - name: Get helper scripts
+      - name: Write helper scripts
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/.github/helper/
-          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/install.sh https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/install.sh
-          curl -f -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/site_config.json
+          if [ -n "${{ inputs.helper_branch }}" ]; then
+            echo "Fetching helper scripts from ${{ inputs.helper_repo }}@${{ inputs.helper_branch }}"
+            curl -f -o ${GITHUB_WORKSPACE}/.github/helper/install.sh "https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/install.sh"
+            curl -f -o ${GITHUB_WORKSPACE}/.github/helper/site_config.json "https://raw.githubusercontent.com/${{ inputs.helper_repo }}/${{ inputs.helper_branch }}/.github/helper/site_config.json"
+          else
+          cat > ${GITHUB_WORKSPACE}/.github/helper/install.sh <<'INSTALL_SH_EOF'
+          #!/bin/bash
+
+          set -e
+
+          cd ~ || exit
+
+          sudo systemctl stop mysql || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libcups2-dev redis-server mariadb-client libmariadb-dev libcairo2-dev
+
+          pip install frappe-bench
+
+          githubbranch=${GITHUB_BASE_REF:-${GITHUB_REF##*/}}
+          frappebranch=${FRAPPE_BRANCH:-$githubbranch}
+          erpnextbranch=${ERPNEXT_BRANCH:-$githubbranch}
+          hrmsbranch=${HRMS_BRANCH:-$githubbranch}
+          paymentsbranch=${PAYMENTS_BRANCH:-$frappebranch}
+
+          git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
+          bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
+
+          mkdir ~/frappe-bench/sites/test_site
+          cp -r "${GITHUB_WORKSPACE}/.github/helper/site_config.json" ~/frappe-bench/sites/test_site/
+
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
+
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "CREATE USER 'test_frappe'@'localhost' IDENTIFIED BY 'test_frappe'"
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "CREATE DATABASE test_frappe"
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "GRANT ALL PRIVILEGES ON \`test_frappe\`.* TO 'test_frappe'@'localhost'"
+
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "FLUSH PRIVILEGES"
+
+          install_whktml() {
+              wget -O /tmp/wkhtmltox.tar.xz https://github.com/frappe/wkhtmltopdf/raw/master/wkhtmltox-0.12.3_linux-generic-amd64.tar.xz
+              tar -xf /tmp/wkhtmltox.tar.xz -C /tmp
+              sudo mv /tmp/wkhtmltox/bin/wkhtmltopdf /usr/local/bin/wkhtmltopdf
+              sudo chmod o+x /usr/local/bin/wkhtmltopdf
+          }
+          install_whktml &
+
+          cd ~/frappe-bench || exit
+
+          sed -i 's/watch:/# watch:/g' Procfile
+          sed -i 's/schedule:/# schedule:/g' Procfile
+          sed -i 's/socketio:/# socketio:/g' Procfile
+          sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
+
+          bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
+          bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
+          bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+
+          if [ -n "$ADDITIONAL_APPS" ]; then
+              for app in $ADDITIONAL_APPS; do
+                  if [ -n "$ACCESS_TOKEN" ]; then
+                      app_url="https://x-access-token:${ACCESS_TOKEN}@github.com/$app"
+                  else
+                      app_url="https://github.com/$app"
+                  fi
+                  bench get-app "$app_url" --branch "$githubbranch" || bench get-app "$app_url"
+              done
+          fi
+
+          bench get-app "$APP_NAME" "${GITHUB_WORKSPACE}"
+
+          bench setup requirements --dev
+
+          bench start &>> ~/frappe-bench/bench_start.log &
+          CI=Yes bench build --app frappe &
+          bench --site test_site reinstall --yes
+
+          bench --verbose --site test_site install-app payments
+          bench --verbose --site test_site install-app erpnext
+          bench --verbose --site test_site install-app hrms
+
+          bench --verbose --site test_site install-app "$APP_NAME"
+
+          if [ -n "$ADDITIONAL_APPS" ]; then
+              for app in $ADDITIONAL_APPS; do
+                  app_name=$(basename "$app")
+                  bench --verbose --site test_site install-app "$app_name"
+              done
+          fi
+          INSTALL_SH_EOF
+          cat > ${GITHUB_WORKSPACE}/.github/helper/site_config.json <<'SITE_CONFIG_EOF'
+          {
+              "db_host": "127.0.0.1",
+              "db_port": 3306,
+              "db_name": "test_frappe",
+              "db_password": "test_frappe",
+              "use_mysqlclient": 1,
+              "auto_email_id": "test@centura.ch",
+              "mail_server": "smtp.centura.ch",
+              "mail_login": "test@centura.ch",
+              "mail_password": "test",
+              "admin_password": "admin",
+              "root_login": "root",
+              "root_password": "root",
+              "host_name": "http://test_site:8000",
+              "install_apps": ["payments", "erpnext"],
+              "throttle_user_limit": 100
+          }
+          SITE_CONFIG_EOF
+          fi
           chmod +x ${GITHUB_WORKSPACE}/.github/helper/install.sh
+
+      - name: Compute cache week
+        id: cache-week
+        run: echo "week=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
           restore-keys: |
+            ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-
             ${{ runner.os }}-pip-
-            ${{ runner.os }}-
-
-      - name: Cache node modules
-        uses: actions/cache@v4
-        env:
-          cache-name: cache-node-modules
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
