@@ -2,14 +2,14 @@
 
 This repository contains GitHub Actions workflows
 
-## Workflow: `version-tag-workflow.yaml`
+## Workflow: `create-version-based-on-tag.yaml`
 
 ### Purpose
-This workflow extracts the version number from the specified Python package directory and creates a new Git tag if it does not already exist.
+This workflow extracts the version number from a pushed Git tag and updates `__version__` in the specified Python package's `__init__.py` accordingly.
 
 ### Location
 ```
-.github/workflows/version-tag-workflow.yaml
+.github/workflows/create-version-based-on-tag.yaml
 ```
 
 ## Inputs
@@ -23,28 +23,6 @@ The workflow is designed to be reusable using `workflow_call`. It accepts the fo
 The workflow requires `contents: write` permission to create and push tags.
 
 ## Usage Example
-
-### Create tag from Version
-This workflow can be used in another repository as follows:
-
-```yaml
-name: Version Tag Creator
-
-on:
-  push:
-    paths:
-      - 'my_repo/__init__.py'
-    branches:
-      - 'develop'
-
-jobs:
-  call-version-tag-workflow:
-    uses: Centura-AG/centura_workflows/.github/workflows/version-tag-workflow.yaml@develop
-    permissions:
-      contents: write
-    with:
-      package_path: ${{ github.event.repository.name }}
-```
 
 ### Create Version from TAG
 
@@ -69,7 +47,7 @@ jobs:
 
 ## Requirements
 - The target repository must contain a Python package with an `__init__.py` file where `__version__` is defined.
-- The workflow should be triggered when a relevant change is made to the `__init__.py` file.
+- The workflow should be triggered when a version tag (`v*`) is pushed.
 - Ensure `contents: write` permission is granted to allow tag creation.
 
 ## License
