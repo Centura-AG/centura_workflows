@@ -221,7 +221,8 @@ jobs:
                           app_url="https://github.com/$app"
                       fi
                       rm -rf "apps/$(basename "$app")"
-                      bench get-app "$app_url" --branch "$githubbranch" || bench get-app "$app_url"
+                      NODE_ENV=development bench get-app "$app_url" --branch "$githubbranch" \
+                          || NODE_ENV=development bench get-app "$app_url"
                       app_dir="apps/$(basename "$app")"
                       git -C "$app_dir" remote set-url "$(git -C "$app_dir" remote | head -n1)" "https://github.com/$app"
                   done
