@@ -77,12 +77,18 @@ on:
         description: 'Minimum patch coverage in percent for new or changed lines'
         required: false
         type: string
-        default: '80'
+        default: '85'
+      coverage_total_min:
+        description: 'Minimum total Python coverage of the app in percent'
+        required: false
+        type: string
+        default: '60'
       enforce_coverage:
         description: >-
           Fail the Coverage job when patch coverage is below
-          coverage_fail_under. Off by default (report-only). A PR labelled
-          skip-coverage is never failed.
+          coverage_fail_under or total coverage is below coverage_total_min.
+          Off by default (report-only). A PR labelled skip-coverage is never
+          failed.
         required: false
         type: boolean
         default: false
@@ -471,6 +477,7 @@ jobs:
       APP: ${{ inputs.app_path }}
       BASE_REF: ${{ github.base_ref }}
       FAIL_UNDER: ${{ inputs.coverage_fail_under }}
+      TOTAL_MIN: ${{ inputs.coverage_total_min }}
       ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
 
     steps:
@@ -508,9 +515,19 @@ jobs:
             exit 0
           fi
 
+          FAILED=0
+          report_miss() {
+            if [ "$ENFORCE" = "true" ]; then
+              echo "::error::$1"
+              FAILED=1
+            else
+              echo "::warning::$1 (report-only, enforce_coverage is off)"
+            fi
+          }
+
           TOTAL=$(cat coverage-report/total.txt)
           {
-            echo "## Python coverage ($APP): ${TOTAL}% of all statements"
+            echo "## Python coverage ($APP): ${TOTAL}% of all statements (minimum ${TOTAL_MIN}%)"
             echo
             echo "<details><summary>Per-file report</summary>"
             echo
@@ -520,9 +537,14 @@ jobs:
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 
+          if [ "$(awk -v t="$TOTAL" -v m="$TOTAL_MIN" 'BEGIN { print (t + 0 < m + 0) }')" = 1 ]; then
+            echo "**Total coverage ${TOTAL}% is below the minimum of ${TOTAL_MIN}%.**" >> "$GITHUB_STEP_SUMMARY"
+            report_miss "Total coverage ${TOTAL}% is below the minimum of ${TOTAL_MIN}%"
+          fi
+
           if [ -z "$BASE_REF" ]; then
             echo "Not a pull request, no patch coverage computed." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            exit "$FAILED"
           fi
 
           set +e
@@ -537,16 +559,13 @@ jobs:
             cat coverage-report/diff-cover.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::diff-cover produced no report (exit $STATUS)"
-            exit 0
+            exit "$FAILED"
           fi
 
           if [ "$STATUS" -ne 0 ]; then
-            if [ "$ENFORCE" = "true" ]; then
-              echo "::error::Patch coverage is below ${FAIL_UNDER}%"
-              exit "$STATUS"
-            fi
-            echo "::warning::Patch coverage is below ${FAIL_UNDER}% (report-only, enforce_coverage is off)"
+            report_miss "Patch coverage of new or changed lines is below ${FAIL_UNDER}%"
           fi
+          exit "$FAILED"
 
       - name: JS unit coverage
         if: '!cancelled()'
