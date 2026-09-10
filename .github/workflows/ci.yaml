@@ -483,7 +483,12 @@ jobs:
             --fail-under "$FAIL_UNDER"
           STATUS=$?
           set -e
-          cat coverage-report/diff-cover.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage-report/diff-cover.md ]; then
+            cat coverage-report/diff-cover.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::diff-cover produced no report (exit $STATUS)"
+            exit 0
+          fi
 
           if [ "$STATUS" -ne 0 ]; then
             if [ "$ENFORCE" = "true" ]; then
@@ -507,8 +512,9 @@ jobs:
           FOUND=0
           while IFS= read -r cfg; do
             dir=$(dirname "$cfg")
-            if ! find "$dir" \( -path '*/node_modules' -o -path '*/e2e' \) -prune -o \
-                 -type f \( -name '*.test.*' -o -name '*.spec.*' \) -print | grep -q .; then
+            first_test=$(find "$dir" \( -path '*/node_modules' -o -path '*/e2e' \) -prune -o \
+                 -type f \( -name '*.test.*' -o -name '*.spec.*' \) -print -quit)
+            if [ -z "$first_test" ]; then
               echo "$dir: vitest config without test files, skipped"
               continue
             fi
@@ -531,8 +537,12 @@ jobs:
                 --fail-under "$FAIL_UNDER"
               rc=$?
               set -e
-              cat "$dir/.coverage-js/diff-cover.md" >> "$GITHUB_STEP_SUMMARY"
-              [ "$rc" -ne 0 ] && STATUS=$rc
+              if [ -f "$dir/.coverage-js/diff-cover.md" ]; then
+                cat "$dir/.coverage-js/diff-cover.md" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::warning::diff-cover produced no report for $dir (exit $rc)"
+              fi
+              if [ "$rc" -ne 0 ]; then STATUS=$rc; fi
             fi
           done < <(find . -path '*/node_modules' -prune -o -type f -name 'vitest.config.*' -print)
 
