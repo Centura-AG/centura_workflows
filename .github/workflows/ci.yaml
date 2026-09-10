@@ -64,6 +64,34 @@ on:
         required: false
         type: string
         default: ''
+      coverage:
+        description: >-
+          Collect Python coverage during the test run, report total and
+          patch coverage (diff-cover against the PR base branch) in the job
+          summary and upload coverage.xml as an artifact.
+        required: false
+        type: boolean
+        default: true
+      coverage_fail_under:
+        description: 'Minimum patch coverage in percent for new or changed lines'
+        required: false
+        type: string
+        default: '80'
+      enforce_coverage:
+        description: >-
+          Fail the test job when patch coverage is below coverage_fail_under.
+          Off by default (report-only). A PR labelled skip-coverage is never
+          failed.
+        required: false
+        type: boolean
+        default: false
+      coverage_comment:
+        description: >-
+          Post the patch coverage report as a sticky PR comment. The caller
+          job must grant pull-requests: write for this.
+        required: false
+        type: boolean
+        default: false
     secrets:
       CENTURA_TAGGER_APP_PK:
         description: 'Private key for the GitHub App to access private repos'
@@ -131,6 +159,8 @@ jobs:
     steps:
       - name: Clone
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -392,9 +422,160 @@ jobs:
           key: ${{ steps.bench-key.outputs.key }}
 
       - name: Run Tests
+        id: run-tests
         run: |
           cd ~/frappe-bench/
           bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app ${{ inputs.app_path }}
+          bench --site test_site run-tests --app ${{ inputs.app_path }} $COVERAGE_FLAG
         env:
           TYPE: server
+          COVERAGE_FLAG: ${{ inputs.coverage && '--coverage' || '' }}
+
+      - name: Install diff-cover
+        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        run: ~/frappe-bench/env/bin/pip install -q diff-cover
+
+      - name: Python coverage report
+        id: coverage
+        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        env:
+          APP: ${{ inputs.app_path }}
+          BASE_REF: ${{ github.base_ref }}
+          FAIL_UNDER: ${{ inputs.coverage_fail_under }}
+          ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
+        run: |
+          set -eo pipefail
+          BENCH=~/frappe-bench
+          COVERAGE="$BENCH/env/bin/coverage"
+          DATA="$BENCH/sites/.coverage"
+          OMIT='*/test_*.py,*/tests/*,*/patches/*,*/node_modules/*'
+          mkdir -p coverage-report
+
+          if [ ! -f "$DATA" ]; then
+            echo "::warning::bench run-tests wrote no coverage data"
+            exit 0
+          fi
+
+          TOTAL=$(cd "$BENCH/apps/$APP" && "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=total)
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Python coverage ($APP): ${TOTAL}% of all statements"
+            echo
+            echo "<details><summary>Per-file report</summary>"
+            echo
+            (cd "$BENCH/apps/$APP" && "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=markdown)
+            echo
+            echo "</details>"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          cp "$BENCH/sites/coverage.xml" coverage-report/coverage.xml
+
+          if [ -z "$BASE_REF" ]; then
+            echo "Not a pull request, no patch coverage computed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          set +e
+          "$BENCH/env/bin/diff-cover" coverage-report/coverage.xml \
+            --compare-branch "origin/$BASE_REF" \
+            --exclude '*/test_*.py' '*/tests/*' '*/patches/*' \
+            --format "markdown:coverage-report/diff-cover.md,json:coverage-report/diff-cover.json" \
+            --fail-under "$FAIL_UNDER"
+          STATUS=$?
+          set -e
+          cat coverage-report/diff-cover.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$STATUS" -ne 0 ]; then
+            if [ "$ENFORCE" = "true" ]; then
+              echo "::error::Patch coverage is below ${FAIL_UNDER}%"
+              exit "$STATUS"
+            fi
+            echo "::warning::Patch coverage is below ${FAIL_UNDER}% (report-only, enforce_coverage is off)"
+          fi
+
+      - name: JS unit coverage
+        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        env:
+          NODE_ENV: development
+          BASE_REF: ${{ github.base_ref }}
+          FAIL_UNDER: ${{ inputs.coverage_fail_under }}
+          ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
+        run: |
+          set -eo pipefail
+          DIFF_COVER=~/frappe-bench/env/bin/diff-cover
+          STATUS=0
+          FOUND=0
+          while IFS= read -r cfg; do
+            dir=$(dirname "$cfg")
+            if ! find "$dir" \( -path '*/node_modules' -o -path '*/e2e' \) -prune -o \
+                 -type f \( -name '*.test.*' -o -name '*.spec.*' \) -print | grep -q .; then
+              echo "$dir: vitest config without test files, skipped"
+              continue
+            fi
+            FOUND=1
+            echo "## JS coverage: $dir" >> "$GITHUB_STEP_SUMMARY"
+            (
+              cd "$dir"
+              yarn install --frozen-lockfile --production=false
+              npx vitest run --coverage.enabled --coverage.provider=v8 \
+                --coverage.reporter=lcov --coverage.reporter=text-summary \
+                --coverage.reportsDirectory=.coverage-js | tee -a "$GITHUB_STEP_SUMMARY"
+            )
+            mkdir -p coverage-report
+            cp "$dir/.coverage-js/lcov.info" "coverage-report/$(echo "$dir" | tr '/' '_').lcov"
+            if [ -n "$BASE_REF" ]; then
+              set +e
+              "$DIFF_COVER" "$dir/.coverage-js/lcov.info" --src-roots "$dir" \
+                --compare-branch "origin/$BASE_REF" \
+                --format "markdown:$dir/.coverage-js/diff-cover.md" \
+                --fail-under "$FAIL_UNDER"
+              rc=$?
+              set -e
+              cat "$dir/.coverage-js/diff-cover.md" >> "$GITHUB_STEP_SUMMARY"
+              [ "$rc" -ne 0 ] && STATUS=$rc
+            fi
+          done < <(find . -path '*/node_modules' -prune -o -type f -name 'vitest.config.*' -print)
+
+          if [ "$FOUND" -eq 0 ]; then
+            echo "No JS unit tests found, JS coverage skipped."
+            exit 0
+          fi
+          if [ "$STATUS" -ne 0 ]; then
+            if [ "$ENFORCE" = "true" ]; then
+              echo "::error::JS patch coverage is below ${FAIL_UNDER}%"
+              exit "$STATUS"
+            fi
+            echo "::warning::JS patch coverage is below ${FAIL_UNDER}% (report-only, enforce_coverage is off)"
+          fi
+
+      - name: Upload coverage report
+        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ inputs.app_path }}
+          path: coverage-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  coverage-comment:
+    name: Coverage comment
+    needs: tests
+    if: inputs.coverage && inputs.coverage_comment && github.event_name == 'pull_request' && !cancelled() && needs.tests.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-${{ inputs.app_path }}
+          path: coverage-report
+
+      - name: Post sticky comment
+        if: hashFiles('coverage-report/diff-cover.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage
+          path: coverage-report/diff-cover.md

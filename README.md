@@ -1,6 +1,30 @@
-# Version Tag Workflow
+# Centura reusable GitHub Actions workflows
 
-This repository contains GitHub Actions workflows
+This repository contains the reusable workflows every Centura Frappe app calls from its own `.github/workflows/`:
+
+- `ci.yaml` — bench setup, `bench run-tests` for the app, coverage report
+- `linter.yaml` — pre-commit (ruff, prettier) and Semgrep
+- `create-version-based-on-tag.yaml` — version bump from a pushed tag
+
+## Workflow: `ci.yaml`
+
+Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develop`. Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
+
+| Name | Type | Default | Meaning |
+|---|---|---|---|
+| `coverage` | boolean | `true` | Run `bench run-tests --coverage`, print total and per-file Python coverage to the job summary, compute patch coverage of the PR with [diff-cover](https://github.com/Bachmann1234/diff_cover) and upload `coverage.xml` + `diff-cover.md/json` as artifact `coverage-<app>` (30 days). |
+| `coverage_fail_under` | string | `'80'` | Minimum patch coverage in percent for new or changed lines. |
+| `enforce_coverage` | boolean | `false` | When `true`, the test job fails below `coverage_fail_under`. When `false` (report-only) a warning annotation is written instead. A PR with the label `skip-coverage` is never failed. |
+| `coverage_comment` | boolean | `false` | Post the patch coverage report as a sticky PR comment through a separate `coverage-comment` job. The caller job must grant `permissions: pull-requests: write`. |
+
+Coverage details:
+
+- Test files, `patches/` and `node_modules/` are excluded from both the total and the patch numbers (`*/test_*.py`, `*/tests/*`, `*/patches/*`).
+- The total counts every `.py` file in the app, including files no test imports.
+- Patch coverage is computed against `origin/<base branch>` of the pull request, so the checkout uses `fetch-depth: 0`. On non-PR runs only the total is reported.
+- JavaScript: every directory with a `vitest.config.*` that contains at least one `*.test.*` / `*.spec.*` file (outside `node_modules/` and `e2e/`) is run with `vitest run --coverage` (v8 provider, lcov) and reported the same way. The package must declare `@vitest/coverage-v8` as a devDependency. Directories without test files are skipped, so frontends that only carry the scaffolded config are unaffected.
+
+Turning the report into a merge gate later means setting `enforce_coverage: true` (globally here or per caller in its `with:` block) and adding `Python Unit Tests` as a required status check in the repository ruleset.
 
 ## Workflow: `create-version-based-on-tag.yaml`
 
