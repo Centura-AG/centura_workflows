@@ -66,9 +66,10 @@ on:
         default: ''
       coverage:
         description: >-
-          Collect Python coverage during the test run, report total and
-          patch coverage (diff-cover against the PR base branch) in the job
-          summary and upload coverage.xml as an artifact.
+          Collect Python coverage during the test run and evaluate it in a
+          separate Coverage job: total and patch coverage (diff-cover against
+          the PR base branch) in the job summary, coverage.xml + reports as
+          an artifact.
         required: false
         type: boolean
         default: true
@@ -79,9 +80,9 @@ on:
         default: '80'
       enforce_coverage:
         description: >-
-          Fail the test job when patch coverage is below coverage_fail_under.
-          Off by default (report-only). A PR labelled skip-coverage is never
-          failed.
+          Fail the Coverage job when patch coverage is below
+          coverage_fail_under. Off by default (report-only). A PR labelled
+          skip-coverage is never failed.
         required: false
         type: boolean
         default: false
@@ -159,8 +160,6 @@ jobs:
     steps:
       - name: Clone
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -431,44 +430,95 @@ jobs:
           TYPE: server
           COVERAGE_FLAG: ${{ inputs.coverage && '--coverage' || '' }}
 
-      - name: Install diff-cover
-        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
-        run: ~/frappe-bench/env/bin/pip install -q diff-cover
-
-      - name: Python coverage report
-        id: coverage
+      - name: Export coverage data
         if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
         env:
           APP: ${{ inputs.app_path }}
-          BASE_REF: ${{ github.base_ref }}
-          FAIL_UNDER: ${{ inputs.coverage_fail_under }}
-          ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
         run: |
           set -eo pipefail
           BENCH=~/frappe-bench
           COVERAGE="$BENCH/env/bin/coverage"
           DATA="$BENCH/sites/.coverage"
           OMIT='*/test_*.py,*/tests/*,*/patches/*,*/node_modules/*'
-          mkdir -p coverage-report
-
+          OUT="$GITHUB_WORKSPACE/coverage-data"
+          mkdir -p "$OUT"
           if [ ! -f "$DATA" ]; then
             echo "::warning::bench run-tests wrote no coverage data"
             exit 0
           fi
+          cd "$BENCH/apps/$APP"
+          "$COVERAGE" xml --data-file "$DATA" --omit "$OMIT" -o "$OUT/coverage.xml"
+          "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=total > "$OUT/total.txt"
+          "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=markdown > "$OUT/report.md"
+          echo "Python coverage: $(cat "$OUT/total.txt")% of all statements"
 
-          TOTAL=$(cd "$BENCH/apps/$APP" && "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=total)
-          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+      - name: Upload coverage data
+        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-${{ inputs.app_path }}
+          path: coverage-data/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  coverage:
+    name: Coverage
+    needs: tests
+    if: inputs.coverage && !cancelled() && needs.tests.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP: ${{ inputs.app_path }}
+      BASE_REF: ${{ github.base_ref }}
+      FAIL_UNDER: ${{ inputs.coverage_fail_under }}
+      ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install diff-cover
+        run: pip install -q diff-cover
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-data-${{ inputs.app_path }}
+          path: coverage-report
+
+      - name: Python patch coverage
+        run: |
+          set -eo pipefail
+          mkdir -p coverage-report
+          if [ ! -f coverage-report/coverage.xml ]; then
+            echo "::warning::No Python coverage data from the test job"
+            exit 0
+          fi
+
+          TOTAL=$(cat coverage-report/total.txt)
           {
             echo "## Python coverage ($APP): ${TOTAL}% of all statements"
             echo
             echo "<details><summary>Per-file report</summary>"
             echo
-            (cd "$BENCH/apps/$APP" && "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=markdown)
+            cat coverage-report/report.md
             echo
             echo "</details>"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
-          cp "$BENCH/sites/coverage.xml" coverage-report/coverage.xml
 
           if [ -z "$BASE_REF" ]; then
             echo "Not a pull request, no patch coverage computed." >> "$GITHUB_STEP_SUMMARY"
@@ -476,7 +526,7 @@ jobs:
           fi
 
           set +e
-          "$BENCH/env/bin/diff-cover" coverage-report/coverage.xml \
+          diff-cover coverage-report/coverage.xml \
             --compare-branch "origin/$BASE_REF" \
             --exclude '*/test_*.py' '*/tests/*' '*/patches/*' \
             --format "markdown:coverage-report/diff-cover.md,json:coverage-report/diff-cover.json" \
@@ -499,15 +549,11 @@ jobs:
           fi
 
       - name: JS unit coverage
-        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        if: '!cancelled()'
         env:
           NODE_ENV: development
-          BASE_REF: ${{ github.base_ref }}
-          FAIL_UNDER: ${{ inputs.coverage_fail_under }}
-          ENFORCE: ${{ inputs.enforce_coverage && !contains(github.event.pull_request.labels.*.name, 'skip-coverage') }}
         run: |
           set -eo pipefail
-          DIFF_COVER=~/frappe-bench/env/bin/diff-cover
           STATUS=0
           FOUND=0
           while IFS= read -r cfg; do
@@ -531,7 +577,7 @@ jobs:
             cp "$dir/.coverage-js/lcov.info" "coverage-report/$(echo "$dir" | tr '/' '_').lcov"
             if [ -n "$BASE_REF" ]; then
               set +e
-              "$DIFF_COVER" "$dir/.coverage-js/lcov.info" --src-roots "$dir" \
+              diff-cover "$dir/.coverage-js/lcov.info" --src-roots "$dir" \
                 --compare-branch "origin/$BASE_REF" \
                 --format "markdown:$dir/.coverage-js/diff-cover.md" \
                 --fail-under "$FAIL_UNDER"
@@ -559,7 +605,7 @@ jobs:
           fi
 
       - name: Upload coverage report
-        if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
+        if: '!cancelled()'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ inputs.app_path }}
@@ -569,8 +615,8 @@ jobs:
 
   coverage-comment:
     name: Coverage comment
-    needs: tests
-    if: inputs.coverage && inputs.coverage_comment && github.event_name == 'pull_request' && !cancelled() && needs.tests.result != 'skipped'
+    needs: coverage
+    if: inputs.coverage && inputs.coverage_comment && github.event_name == 'pull_request' && !cancelled() && needs.coverage.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
       contents: read
