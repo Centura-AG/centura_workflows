@@ -431,6 +431,10 @@ jobs:
         run: |
           cd ~/frappe-bench/
           bench --site test_site set-config allow_tests true
+          if [ -n "$COVERAGE_FLAG" ]; then
+            printf '[run]\nbranch = True\n' > "$HOME/frappe-bench/coveragerc"
+            export COVERAGE_RCFILE="$HOME/frappe-bench/coveragerc"
+          fi
           bench --site test_site run-tests --app ${{ inputs.app_path }} $COVERAGE_FLAG
         env:
           TYPE: server
@@ -456,7 +460,7 @@ jobs:
           "$COVERAGE" xml --data-file "$DATA" --omit "$OMIT" -o "$OUT/coverage.xml"
           "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=total > "$OUT/total.txt"
           "$COVERAGE" report --data-file "$DATA" --omit "$OMIT" --format=markdown > "$OUT/report.md"
-          echo "Python coverage: $(cat "$OUT/total.txt")% of all statements"
+          echo "Python coverage: $(cat "$OUT/total.txt")% of statements and branches"
 
       - name: Upload coverage data
         if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
@@ -527,7 +531,7 @@ jobs:
 
           TOTAL=$(cat coverage-report/total.txt)
           {
-            echo "## Python coverage ($APP): ${TOTAL}% of all statements (minimum ${TOTAL_MIN}%)"
+            echo "## Python coverage ($APP): ${TOTAL}% of statements and branches (minimum ${TOTAL_MIN}%)"
             echo
             echo "<details><summary>Per-file report</summary>"
             echo
