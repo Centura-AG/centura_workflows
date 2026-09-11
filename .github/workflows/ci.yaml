@@ -82,16 +82,16 @@ on:
         description: 'Minimum total Python coverage of the app in percent'
         required: false
         type: string
-        default: '60'
+        default: '80'
       enforce_coverage:
         description: >-
           Fail the Coverage job when patch coverage is below
           coverage_fail_under or total coverage is below coverage_total_min.
-          Off by default (report-only). A PR labelled skip-coverage is never
-          failed.
+          Set false for report-only warnings. A PR labelled skip-coverage is
+          never failed.
         required: false
         type: boolean
-        default: false
+        default: true
       coverage_comment:
         description: >-
           Post the patch coverage report as a sticky PR comment. The caller

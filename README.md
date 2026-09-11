@@ -14,8 +14,8 @@ Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develo
 |---|---|---|---|
 | `coverage` | boolean | `true` | Run `bench run-tests --coverage` in the test job and evaluate the result in a separate `Coverage` job: total and per-file Python coverage in the job summary, patch coverage of the PR with [diff-cover](https://github.com/Bachmann1234/diff_cover), `coverage.xml` + `diff-cover.md/json` as artifact `coverage-<app>` (30 days). |
 | `coverage_fail_under` | string | `'85'` | Minimum patch coverage in percent for new or changed lines. |
-| `coverage_total_min` | string | `'60'` | Minimum total Python coverage of the app. Apps below it today can set a lower value in their own `with:` block until they catch up. |
-| `enforce_coverage` | boolean | `false` | When `true`, the `Coverage` job fails below `coverage_fail_under` or `coverage_total_min`. When `false` (report-only) a warning annotation is written instead. A PR with the label `skip-coverage` is never failed. |
+| `coverage_total_min` | string | `'80'` | Minimum total Python coverage of the app. Apps below it today can set a lower value in their own `with:` block until they catch up. |
+| `enforce_coverage` | boolean | `true` | When `true`, the `Coverage` job fails below `coverage_fail_under` or `coverage_total_min`. When `false` (report-only) a warning annotation is written instead. A PR with the label `skip-coverage` is never failed. |
 | `coverage_comment` | boolean | `false` | Post the patch coverage report as a sticky PR comment through a separate `coverage-comment` job. The caller job must grant `permissions: pull-requests: write`. |
 
 Jobs and check names: `Sanity Checks` → `Python Unit Tests` → `Coverage` (→ `Coverage comment`, opt-in). The test job only collects the data (`.coverage` → filtered `coverage.xml`, per-file report, total, uploaded as the short-lived artifact `coverage-data-<app>`); the `Coverage` job needs no bench and takes about a minute: checkout with history, `pip install diff-cover`, download the data, evaluate. Test failures and coverage misses therefore show up as two different checks.
@@ -27,7 +27,7 @@ Coverage details:
 - Patch coverage is computed against `origin/<base branch>` of the pull request (the `Coverage` job checks out with `fetch-depth: 0`). On non-PR runs only the total is reported.
 - JavaScript: in the `Coverage` job, every directory with a `vitest.config.*` that contains at least one `*.test.*` / `*.spec.*` file (outside `node_modules/` and `e2e/`) is run with `vitest run --coverage` (v8 provider, lcov) and reported the same way. The package must declare `@vitest/coverage-v8` as a devDependency. Directories without test files are skipped, so frontends that only carry the scaffolded config are unaffected.
 
-Turning the report into a merge gate later means setting `enforce_coverage: true` (globally here or per caller in its `with:` block) and adding `Coverage` as a required status check in the repository ruleset.
+Enforcement is on by default. Turning the failing check into a merge gate means adding `Coverage` as a required status check in the repository ruleset; a caller can go back to report-only with `enforce_coverage: false` in its `with:` block.
 
 ## Workflow: `create-version-based-on-tag.yaml`
 
