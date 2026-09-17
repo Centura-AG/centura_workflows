@@ -8,7 +8,11 @@ This repository contains the reusable workflows every Centura Frappe app calls f
 
 ## Workflow: `ci.yaml`
 
-Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develop`. Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
+Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develop`.
+
+The Frappe-stack apps (payments, erpnext, hrms) are installed without their desk assets and without their postinstall frontends (erpnext/banking, hrms/frontend, hrms/roster), none of which `bench run-tests` ever serves. The app under test and every app in `additional_apps` keep both, because `before_tests` hooks run frontend suites out of those `node_modules` trees. The yarn cache is restored but not saved: a `pull_request` run cannot read another PR's cache, so saving it only consumes the repository's 10 GB cache quota.
+
+Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
 
 | Name | Type | Default | Meaning |
 |---|---|---|---|
