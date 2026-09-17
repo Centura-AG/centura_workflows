@@ -298,12 +298,15 @@ jobs:
               sed -i 's/socketio:/# socketio:/g' Procfile
               sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
+              # Stack apps only: the app under test and the additional_apps
+              # need their frontends, because before_tests hooks run suites
+              # out of those node_modules trees.
               if [ "$with_erpnext" = true ]; then
-                  bench get-app "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
-                  bench get-app "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
+                  YARN_IGNORE_SCRIPTS=true bench get-app --skip-assets "https://github.com/frappe/payments" --branch "$paymentsbranch" # To satisfy dependencies of erpnext payment_request.py
+                  YARN_IGNORE_SCRIPTS=true bench get-app --skip-assets "https://github.com/frappe/erpnext" --branch "$erpnextbranch" --resolve-deps
               fi
               if [ "$with_hrms" = true ]; then
-                  bench get-app "https://github.com/frappe/hrms" --branch "$hrmsbranch"
+                  YARN_IGNORE_SCRIPTS=true bench get-app --skip-assets "https://github.com/frappe/hrms" --branch "$hrmsbranch"
               fi
 
               get_additional_apps
@@ -365,14 +368,14 @@ jobs:
         id: cache-week
         run: echo "week=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache pip
+      - name: Cache uv
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ steps.cache-week.outputs.week }}-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-uv-${{ steps.cache-week.outputs.week }}-
+            ${{ runner.os }}-uv-
 
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
@@ -417,6 +420,13 @@ jobs:
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
           USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}
           BENCH_CACHE_HIT: ${{ steps.bench-cache.outputs.cache-hit }}
+
+      # Keeps only the source distributions that are expensive to rebuild, so a
+      # week's entry is not seeded with the previous week's full content.
+      - name: Prune uv cache
+        if: always()
+        continue-on-error: true
+        run: uv cache prune --ci || true
 
       - name: Save bench cache
         if: inputs.use_bench_cache && steps.bench-cache.outputs.cache-hit != 'true'
