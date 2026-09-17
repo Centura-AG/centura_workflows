@@ -368,15 +368,6 @@ jobs:
         id: cache-week
         run: echo "week=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-${{ hashFiles('**/*requirements.txt', '**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ steps.cache-week.outputs.week }}-
-            ${{ runner.os }}-pip-
-
       - name: Cache uv
         uses: actions/cache@v4
         with:
@@ -390,10 +381,7 @@ jobs:
         id: yarn-cache-dir-path
         run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
 
-      # Restore-only: a pull_request run can never read another PR's cache, so
-      # saving here only burns the repository's 10 GB quota and evicts the
-      # entries that do get reused.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache@v4
         id: yarn-cache
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -432,6 +420,13 @@ jobs:
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
           USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}
           BENCH_CACHE_HIT: ${{ steps.bench-cache.outputs.cache-hit }}
+
+      # Keeps only the source distributions that are expensive to rebuild, so a
+      # week's entry is not seeded with the previous week's full content.
+      - name: Prune uv cache
+        if: always()
+        continue-on-error: true
+        run: uv cache prune --ci || true
 
       - name: Save bench cache
         if: inputs.use_bench_cache && steps.bench-cache.outputs.cache-hit != 'true'
