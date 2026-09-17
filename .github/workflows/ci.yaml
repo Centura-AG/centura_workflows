@@ -7,6 +7,14 @@ on:
         description: 'Path to your app'
         required: true
         type: string
+      app_name:
+        description: >-
+          Python package name of the app, as bench names its folder from
+          pyproject.toml. Defaults to the repository name; pass it explicitly
+          when the two differ.
+        required: false
+        type: string
+        default: ''
       frappe_branch:
         description: 'Frappe branch to test against'
         required: false
@@ -412,7 +420,7 @@ jobs:
           ERPNEXT_BRANCH: ${{ inputs.erpnext_branch }}
           HRMS_BRANCH: ${{ inputs.hrms_branch }}
           INSTALL_APPS: ${{ inputs.install_apps }}
-          APP_NAME: ${{ github.event.repository.name }}
+          APP_NAME: ${{ inputs.app_name != '' && inputs.app_name || github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
           USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}

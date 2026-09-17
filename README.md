@@ -8,7 +8,11 @@ This repository contains the reusable workflows every Centura Frappe app calls f
 
 ## Workflow: `ci.yaml`
 
-Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develop`. Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
+Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develop`.
+
+`app_name` is the Python package name used for `bench install-app`. It defaults to the repository name, which is right as long as the two match; `bench get-app` names the folder after `[project] name` in `pyproject.toml`, so an app whose package and repository names differ has to pass `app_name` explicitly. `app_path` stays the path used for `run-tests` and coverage.
+
+Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
 
 | Name | Type | Default | Meaning |
 |---|---|---|---|
