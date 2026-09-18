@@ -41,7 +41,7 @@ on:
         type: string
         default: 'erpnext hrms'
       additional_apps:
-        description: 'Space-separated list of additional apps to install (format: org/repo org/repo@ref). Without @ref an app is fetched at the base branch, falling back to its default branch.'
+        description: 'Space-separated list of additional apps to install (format: org/repo org/repo@ref). Without @ref an app is fetched at the Frappe branch (version-16) if it has one, else the base branch, else develop, else its default branch.'
         required: false
         type: string
         default: ''
@@ -247,6 +247,15 @@ jobs:
 
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "FLUSH PRIVILEGES"
 
+          resolve_app_branch() {
+              for candidate in "$frappebranch" "$githubbranch" develop; do
+                  if git ls-remote --exit-code --heads "$1" "refs/heads/$candidate" >/dev/null 2>&1; then
+                      echo "$candidate"
+                      return
+                  fi
+              done
+          }
+
           get_additional_apps() {
               if [ -n "$ADDITIONAL_APPS" ]; then
                   for entry in $ADDITIONAL_APPS; do
@@ -260,8 +269,9 @@ jobs:
                       if [ "$entry" != "$app" ]; then
                           NODE_ENV=development bench get-app "$app_url" --branch "${entry#*@}"
                       else
-                          NODE_ENV=development bench get-app "$app_url" --branch "$githubbranch" \
-                              || NODE_ENV=development bench get-app "$app_url"
+                          branch=$(resolve_app_branch "$app_url")
+                          echo "Additional app $app: ${branch:-default branch}"
+                          NODE_ENV=development bench get-app "$app_url" ${branch:+--branch "$branch"}
                       fi
                       app_dir="apps/$(basename "$app")"
                       git -C "$app_dir" remote set-url "$(git -C "$app_dir" remote | head -n1)" "https://github.com/$app"
