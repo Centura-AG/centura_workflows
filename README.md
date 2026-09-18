@@ -12,6 +12,8 @@ Called with `uses: Centura-AG/centura_workflows/.github/workflows/ci.yaml@develo
 
 The Frappe-stack apps (payments, erpnext, hrms) are installed without their desk assets and without their postinstall frontends (erpnext/banking, hrms/frontend, hrms/roster), none of which `bench run-tests` ever serves. The app under test and every app in `additional_apps` keep both, because `before_tests` hooks run frontend suites out of those `node_modules` trees. The yarn, uv and bench caches are all scoped to the pull request that wrote them, because every caller runs `on: pull_request` — they speed up re-runs and follow-up pushes within the same PR, not the first run of a new one.
 
+An `additional_apps` entry is `org/repo` or `org/repo@ref`. Without `@ref` the app is fetched at the `frappe_branch` (`version-16`) if it has such a branch, else at the pull request's base branch, else at `develop`, else at its default branch. A pinned `@ref` has no fallback.
+
 Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
 
 | Name | Type | Default | Meaning |
