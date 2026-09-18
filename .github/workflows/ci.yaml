@@ -41,7 +41,7 @@ on:
         type: string
         default: 'erpnext hrms'
       additional_apps:
-        description: 'Space-separated list of additional apps to install (format: org/repo org/repo)'
+        description: 'Space-separated list of additional apps to install (format: org/repo org/repo@ref). Without @ref an app is fetched at the base branch, falling back to its default branch.'
         required: false
         type: string
         default: ''
@@ -249,15 +249,20 @@ jobs:
 
           get_additional_apps() {
               if [ -n "$ADDITIONAL_APPS" ]; then
-                  for app in $ADDITIONAL_APPS; do
+                  for entry in $ADDITIONAL_APPS; do
+                      app=${entry%%@*}
                       if [ -n "$ACCESS_TOKEN" ]; then
                           app_url="https://x-access-token:${ACCESS_TOKEN}@github.com/$app"
                       else
                           app_url="https://github.com/$app"
                       fi
                       rm -rf "apps/$(basename "$app")"
-                      NODE_ENV=development bench get-app "$app_url" --branch "$githubbranch" \
-                          || NODE_ENV=development bench get-app "$app_url"
+                      if [ "$entry" != "$app" ]; then
+                          NODE_ENV=development bench get-app "$app_url" --branch "${entry#*@}"
+                      else
+                          NODE_ENV=development bench get-app "$app_url" --branch "$githubbranch" \
+                              || NODE_ENV=development bench get-app "$app_url"
+                      fi
                       app_dir="apps/$(basename "$app")"
                       git -C "$app_dir" remote set-url "$(git -C "$app_dir" remote | head -n1)" "https://github.com/$app"
                   done
@@ -337,8 +342,8 @@ jobs:
           bench --verbose --site test_site install-app "$APP_NAME"
 
           if [ -n "$ADDITIONAL_APPS" ]; then
-              for app in $ADDITIONAL_APPS; do
-                  app_name=$(basename "$app")
+              for entry in $ADDITIONAL_APPS; do
+                  app_name=$(basename "${entry%%@*}")
                   bench --verbose --site test_site install-app "$app_name"
               done
           fi
