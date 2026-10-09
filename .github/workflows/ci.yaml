@@ -114,7 +114,7 @@ concurrency:
 jobs:
   checks:
     name: Sanity Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       has_tests: ${{ steps.check_tests.outputs.has_tests }}
 
@@ -149,7 +149,7 @@ jobs:
     name: Python Unit Tests
     needs: checks
     if: needs.checks.outputs.has_tests == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       NODE_ENV: 'production'
@@ -500,7 +500,7 @@ jobs:
     name: Coverage
     needs: tests
     if: inputs.coverage && !cancelled() && needs.tests.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
       APP: ${{ inputs.app_path }}
@@ -665,7 +665,7 @@ jobs:
     name: Coverage comment
     needs: coverage
     if: inputs.coverage && inputs.coverage_comment && github.event_name == 'pull_request' && !cancelled() && needs.coverage.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       pull-requests: write
