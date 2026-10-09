@@ -45,6 +45,14 @@ on:
         required: false
         type: string
         default: ''
+      skip_additional_app_assets:
+        description: >-
+          Fetch the additional_apps with --skip-assets: yarn install still runs,
+          but bench does not build their desk assets. For apps whose frontend
+          does not build on the Frappe branch under test.
+        required: false
+        type: boolean
+        default: false
       use_bench_cache:
         description: >-
           Cache the built bench (clones, venv, assets) and a dump of the test-site
@@ -258,6 +266,10 @@ jobs:
 
           get_additional_apps() {
               if [ -n "$ADDITIONAL_APPS" ]; then
+                  skip_assets=""
+                  if [ "$SKIP_ADDITIONAL_APP_ASSETS" = "true" ]; then
+                      skip_assets="--skip-assets"
+                  fi
                   for entry in $ADDITIONAL_APPS; do
                       app=${entry%%@*}
                       if [ -n "$ACCESS_TOKEN" ]; then
@@ -267,11 +279,11 @@ jobs:
                       fi
                       rm -rf "apps/$(basename "$app")"
                       if [ "$entry" != "$app" ]; then
-                          NODE_ENV=development bench get-app "$app_url" --branch "${entry#*@}"
+                          NODE_ENV=development bench get-app $skip_assets "$app_url" --branch "${entry#*@}"
                       else
                           branch=$(resolve_app_branch "$app_url")
                           echo "Additional app $app: ${branch:-default branch}"
-                          NODE_ENV=development bench get-app "$app_url" ${branch:+--branch "$branch"}
+                          NODE_ENV=development bench get-app $skip_assets "$app_url" ${branch:+--branch "$branch"}
                       fi
                       app_dir="apps/$(basename "$app")"
                       git -C "$app_dir" remote set-url "$(git -C "$app_dir" remote | head -n1)" "https://github.com/$app"
@@ -432,6 +444,7 @@ jobs:
           INSTALL_APPS: ${{ inputs.install_apps }}
           APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
+          SKIP_ADDITIONAL_APP_ASSETS: ${{ inputs.skip_additional_app_assets }}
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
           USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}
           BENCH_CACHE_HIT: ${{ steps.bench-cache.outputs.cache-hit }}
