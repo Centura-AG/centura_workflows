@@ -38,6 +38,7 @@ INLINE_CODE_RE = re.compile(r"(`+)(?:(?!\1).)+?\1")
 
 AUDIENCES = ("user", "admin", "internal")
 LAYERS = ("customer", "product", "platform")
+SHOT_PROFILES = ("base", "full")
 PAGE_KEYS = ("title", "audience", "requires", "covers", "owner", "roles", "versions", "order")
 README_KEYS = ("title", "order", "layer")
 SHOT_KEYS = ("name", "route", "user", "wait", "settle", "steps", "hideText", "crop", "css")
@@ -628,16 +629,25 @@ class Checker:
 		if problem:
 			self.error(path, problem[0], problem[1])
 			return
-		if not isinstance(data, dict) or set(data) != {"shots"}:
-			self.error(path, 1, "shots.yaml must be a map with the single key 'shots'")
+		if not isinstance(data, dict) or "shots" not in data or not set(data) <= {"shots", "profile"}:
+			self.error(path, 1, "shots.yaml must be a map with the key 'shots' and the optional key 'profile'")
 			return
 		self.report_duplicates(path, data)
+		self.check_shot_profile(path, data)
 		if not isinstance(data["shots"], list):
 			self.error(path, data.key_lines["shots"], "'shots' must be a list")
 			return
 		for shot in data["shots"]:
 			self.check_shot(path, shot, data.key_lines["shots"])
 		self.check_shot_names(path, data["shots"])
+
+	def check_shot_profile(self, path, data):
+		profile = data.get("profile", "full")
+		line = data.key_lines.get("profile", 1)
+		if profile not in SHOT_PROFILES:
+			self.error(path, line, f"'profile' must be one of {', '.join(SHOT_PROFILES)}")
+		elif self.is_docs_app and profile != "base" and data.get("shots"):
+			self.error(path, line, "vendor screenshots need 'profile: base', so that no other app shows in them")
 
 	def check_shot_names(self, path, shots):
 		seen = {}

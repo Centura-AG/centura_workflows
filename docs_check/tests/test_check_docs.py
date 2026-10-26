@@ -321,7 +321,17 @@ class TestShots(DocsTestCase):
 		self.assertEqual(self.shots(text), [])
 
 	def test_wrong_root(self):
-		self.assertError(self.shots("foo: []\n"), "single key 'shots'")
+		self.assertError(self.shots("foo: []\n"), "the key 'shots'")
+
+	def test_profile(self):
+		self.assertEqual(self.shots("profile: full\nshots: []\n"), [])
+		self.assertError(self.shots("profile: clean\nshots: []\n"), "'profile' must be one of")
+
+	def test_docs_app_needs_base_profile(self):
+		shot = "shots:\n  - name: erpnext-angebot\n    route: /desk/quotation\n"
+		files = {"client_docs/README.md": DOCS_README, "client_docs/erpnext/README.md": FOLDER_README, "client_docs/erpnext/seite.md": page()}
+		self.assertError(self.messages({**files, "client_docs/shots.yaml": shot}), "need 'profile: base'")
+		self.assertEqual(self.check({**files, "client_docs/shots.yaml": "profile: base\n" + shot}), [])
 
 	def test_unknown_key(self):
 		self.assertError(self.shots("shots:\n  - name: a\n    route: /x\n    color: red\n"), "unknown key 'color'")
