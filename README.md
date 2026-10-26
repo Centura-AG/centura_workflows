@@ -4,6 +4,7 @@ This repository contains the reusable workflows every Centura Frappe app calls f
 
 - `ci.yaml` — bench setup, `bench run-tests` for the app, coverage report
 - `linter.yaml` — pre-commit (ruff, prettier) and Semgrep
+- `docs.yaml` — checks for the customer docs in `client_docs/`
 - `create-version-based-on-tag.yaml` — version bump from a pushed tag
 
 ## Workflow: `ci.yaml`
@@ -34,6 +35,51 @@ Coverage details:
 - JavaScript: in the `Coverage` job, every directory with a `vitest.config.*` that contains at least one `*.test.*` / `*.spec.*` file (outside `node_modules/` and `e2e/`) is run with `vitest run --coverage` (v8 provider, lcov) and reported the same way. The package must declare `@vitest/coverage-v8` as a devDependency. Directories without test files are skipped, so frontends that only carry the scaffolded config are unaffected.
 
 Enforcement is on by default. Turning the failing check into a merge gate means adding `Coverage` as a required status check in the repository ruleset; a caller can go back to report-only with `enforce_coverage: false` in its `with:` block.
+
+## Workflow: `docs.yaml`
+
+Checks the customer docs in `client_docs/` against `CONVENTIONS.md` of Centura-AG/centura_docs. A repo opts in with one job:
+
+```yaml
+name: Docs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  docs:
+    uses: Centura-AG/centura_workflows/.github/workflows/docs.yaml@develop
+```
+
+The job is green and skips all setup when the repo has no `client_docs/` folder or the folder is empty. Inputs `python_version` and `node_version` are optional.
+
+Checks (one GitHub annotation per error, with `file` and `line` where known):
+
+- markdownlint (`markdownlint-cli2` 0.18.1, config `docs_check/.markdownlint.jsonc`): no raw HTML, no `#` heading in the body, long lines allowed
+- file and folder names, depth, folder `README.md` files and their keys
+- frontmatter schema of pages, translations and version variants
+- links and images: relative targets exist, `app:` syntax, same-repo `app:` targets exist, `https://` only, images exist or have a `shots.yaml` entry
+- `shots.yaml` schema
+- covers check on pull requests: a change to an item listed in a page's `covers` fails when no file of that page group changed. The label `no-docs` skips it. It is skipped in the docs app itself (a `client_docs/README.md` with `layer: platform`), where the vendor-folder names are also allowed.
+
+The checker is `docs_check/check_docs.py` (Python, PyYAML 6.0.3 only). The workflow checks out this repo a second time at `github.job_workflow_sha`, the commit of the called workflow file, so the checker always matches the ref in the caller's `uses:` line.
+
+Run it locally in a repo:
+
+```bash
+python docs_check/check_docs.py --root /path/to/repo --format plain
+python docs_check/check_docs.py --root . --base origin/develop --head HEAD --format plain
+```
+
+Run the unit tests (they build fixture trees in temporary folders and need `git`):
+
+```bash
+pip install pyyaml==6.0.3
+python -m unittest discover -s docs_check/tests -v
+```
+
+The workflow `test-docs-check.yaml` runs them on every pull request that touches `docs_check/`.
 
 ## Workflow: `create-version-based-on-tag.yaml`
 

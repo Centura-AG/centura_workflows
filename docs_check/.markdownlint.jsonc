@@ -1,0 +1,13 @@
+{
+  "default": true,
+  "MD003": { "style": "atx" },
+  "MD004": { "style": "dash" },
+  "MD013": false,
+  "MD024": { "siblings_only": true },
+  "MD025": { "front_matter_title": "^\\s*title\\s*[:=]" },
+  "MD029": { "style": "one_or_ordered" },
+  "MD033": true,
+  "MD041": false,
+  "MD046": { "style": "fenced" },
+  "MD051": false
+}
