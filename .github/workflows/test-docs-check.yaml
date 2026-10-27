@@ -1,0 +1,28 @@
+name: Test docs checker
+
+on:
+  pull_request:
+    paths:
+      - 'docs_check/**'
+      - '.github/workflows/docs.yaml'
+      - '.github/workflows/test-docs-check.yaml'
+  push:
+    branches: [develop]
+    paths:
+      - 'docs_check/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 'Docs checker unit tests'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: pip install pyyaml==6.0.3
+      - run: python -m unittest discover -s docs_check/tests -v

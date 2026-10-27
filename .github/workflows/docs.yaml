@@ -1,0 +1,74 @@
+name: Customer Docs
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.14'
+      node_version:
+        description: 'Node version to use'
+        required: false
+        type: string
+        default: '24'
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: 'Customer Docs'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Look for customer docs
+        id: detect
+        run: |
+          if [ -n "$(find client_docs -type f -not -name '.*' -print -quit 2>/dev/null)" ]; then
+            echo "has_docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_docs=false" >> "$GITHUB_OUTPUT"
+            echo "No customer docs in client_docs/: nothing to check."
+          fi
+
+      - name: Check out the docs checker
+        if: steps.detect.outputs.has_docs == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: Centura-AG/centura_workflows
+          ref: ${{ github.job_workflow_sha }}
+          path: .centura_workflows
+
+      - uses: actions/setup-python@v6
+        if: steps.detect.outputs.has_docs == 'true'
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - uses: actions/setup-node@v6
+        if: steps.detect.outputs.has_docs == 'true'
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install checker dependencies
+        if: steps.detect.outputs.has_docs == 'true'
+        run: pip install pyyaml==6.0.3
+
+      - name: Check customer docs
+        if: steps.detect.outputs.has_docs == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          args=(--root . --format github --markdownlint-version 0.18.1)
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            args+=(--base "$PR_BASE_SHA" --head "$PR_HEAD_SHA")
+          fi
+          python .centura_workflows/docs_check/check_docs.py "${args[@]}"
