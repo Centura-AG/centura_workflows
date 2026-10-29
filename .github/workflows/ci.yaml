@@ -64,6 +64,21 @@ on:
         required: false
         type: string
         default: ''
+      test_shards:
+        description: >-
+          Path of a JSON file in the app repo that splits the test run into
+          parallel jobs: {"shards": [{"name": "...", "modules": [...]}],
+          "exclude": [...], "rest": N}. Each named shard runs its modules, one
+          run-tests call per module. Every other test module that is not in
+          "exclude" runs in N «rest» shards. Empty runs the whole app in one job.
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'Timeout of each test job in minutes'
+        required: false
+        type: number
+        default: 60
       coverage:
         description: >-
           Collect Python coverage during the test run and evaluate it in a
@@ -117,6 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_tests: ${{ steps.check_tests.outputs.has_tests }}
+      shards: ${{ steps.plan_shards.outputs.shards }}
 
     steps:
       - name: Clone
@@ -145,12 +161,63 @@ jobs:
             echo "No tests found, skipping test run"
           fi
 
+      - name: Plan test shards
+        id: plan_shards
+        env:
+          SHARDS_FILE: ${{ inputs.test_shards }}
+          APP: ${{ inputs.app_path }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, pathlib, sys
+
+          path = os.environ["SHARDS_FILE"]
+          app = os.environ["APP"]
+          if not path:
+              shards = [{"name": "", "modules": []}]
+          else:
+              root = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+              config = json.loads((root / path).read_text())
+              discovered = sorted(
+                  ".".join(file.relative_to(root).with_suffix("").parts)
+                  for file in (root / app).rglob("test_*.py")
+                  if "node_modules" not in file.parts
+              )
+              named = [module for shard in config.get("shards", []) for module in shard["modules"]]
+              excluded = config.get("exclude", [])
+              missing = [
+                  module
+                  for module in named + excluded
+                  if not (root / (module.replace(".", "/") + ".py")).is_file()
+              ]
+              if missing:
+                  sys.exit(f"{path} names modules that do not exist: {', '.join(missing)}")
+              rest = [module for module in discovered if module not in set(named) | set(excluded)]
+              count = max(1, int(config.get("rest", 1)))
+              shards = [
+                  {"name": shard["name"], "modules": shard["modules"]}
+                  for shard in config.get("shards", [])
+              ]
+              shards += [
+                  {"name": f"rest-{index + 1}", "modules": rest[index::count]}
+                  for index in range(count)
+                  if rest[index::count]
+              ]
+              for shard in shards:
+                  print(f"{shard['name']}: {len(shard['modules'])} modules")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"shards={json.dumps(shards)}\n")
+          EOF
+
   tests:
-    name: Python Unit Tests
+    name: Python Unit Tests${{ matrix.shard.name && format(' ({0})', matrix.shard.name) || '' }}
     needs: checks
     if: needs.checks.outputs.has_tests == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.checks.outputs.shards) }}
     env:
       NODE_ENV: 'production'
 
@@ -460,10 +527,31 @@ jobs:
             printf '[run]\nbranch = True\n' > "$HOME/frappe-bench/coveragerc"
             export COVERAGE_RCFILE="$HOME/frappe-bench/coveragerc"
           fi
-          bench --site test_site run-tests --app ${{ inputs.app_path }} $COVERAGE_FLAG
+          if [ -z "$MODULES" ]; then
+            bench --site test_site run-tests --app ${{ inputs.app_path }} $COVERAGE_FLAG
+            exit
+          fi
+          STATUS=0
+          SKIP=
+          INDEX=0
+          for module in $MODULES; do
+            echo "::group::$module"
+            bench --site test_site run-tests --app ${{ inputs.app_path }} --module "$module" $SKIP $COVERAGE_FLAG || STATUS=1
+            echo "::endgroup::"
+            SKIP=--skip-before-tests
+            INDEX=$((INDEX + 1))
+            if [ -f sites/.coverage ]; then
+              mv sites/.coverage "sites/.coverage.part$INDEX"
+            fi
+          done
+          if ls sites/.coverage.part* > /dev/null 2>&1; then
+            env/bin/coverage combine --data-file sites/.coverage sites/.coverage.part*
+          fi
+          exit "$STATUS"
         env:
           TYPE: server
           COVERAGE_FLAG: ${{ inputs.coverage && '--coverage' || '' }}
+          MODULES: ${{ join(matrix.shard.modules, ' ') }}
 
       - name: Export coverage data
         if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
@@ -491,7 +579,7 @@ jobs:
         if: inputs.coverage && !cancelled() && steps.run-tests.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-data-${{ inputs.app_path }}
+          name: coverage-data-${{ inputs.app_path }}${{ matrix.shard.name && format('-{0}', matrix.shard.name) || '' }}
           path: coverage-data/
           if-no-files-found: ignore
           retention-days: 7
@@ -532,8 +620,45 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: coverage-data-${{ inputs.app_path }}
-          path: coverage-report
+          pattern: coverage-data-${{ inputs.app_path }}*
+          path: coverage-shards
+
+      - name: Merge coverage of the shards
+        run: |
+          python3 - <<'EOF'
+          import pathlib, shutil
+          import xml.etree.ElementTree as ET
+
+          shards = sorted(path for path in pathlib.Path("coverage-shards").glob("*") if (path / "coverage.xml").is_file())
+          target = pathlib.Path("coverage-report")
+          target.mkdir(exist_ok=True)
+          if len(shards) == 1:
+              for file in shards[0].iterdir():
+                  shutil.copy(file, target / file.name)
+          elif shards:
+              trees = [ET.parse(shard / "coverage.xml") for shard in shards]
+              hits = {}
+              for tree in trees:
+                  for cls in tree.iter("class"):
+                      lines = hits.setdefault(cls.get("filename"), {})
+                      for line in cls.iter("line"):
+                          number = line.get("number")
+                          lines[number] = max(lines.get(number, 0), int(line.get("hits", 0)))
+              merged = trees[0]
+              for cls in merged.iter("class"):
+                  lines = hits.get(cls.get("filename"), {})
+                  for line in cls.iter("line"):
+                      line.set("hits", str(lines.get(line.get("number"), 0)))
+              total = sum(len(lines) for lines in hits.values())
+              covered = sum(1 for lines in hits.values() for value in lines.values() if value)
+              rate = covered / total if total else 0
+              merged.getroot().set("line-rate", f"{rate:.4f}")
+              merged.write(target / "coverage.xml")
+              (target / "total.txt").write_text(f"{rate * 100:.0f}")
+              (target / "report.md").write_text(
+                  f"Merged from {len(shards)} test shards: {covered} of {total} lines covered (statements only).\n"
+              )
+          EOF
 
       - name: Python patch coverage
         run: |
