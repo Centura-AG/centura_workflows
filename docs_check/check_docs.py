@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import datetime
 import json
 import os
 import re
@@ -39,7 +40,7 @@ INLINE_CODE_RE = re.compile(r"(`+)(?:(?!\1).)+?\1")
 AUDIENCES = ("user", "admin", "internal")
 LAYERS = ("customer", "product", "platform")
 SHOT_PROFILES = ("base", "full")
-PAGE_KEYS = ("title", "audience", "requires", "covers", "owner", "roles", "versions", "order")
+PAGE_KEYS = ("title", "audience", "requires", "covers", "owner", "roles", "versions", "order", "version")
 README_KEYS = ("title", "order", "layer")
 SHOT_KEYS = ("name", "route", "user", "wait", "settle", "steps", "hideText", "crop", "css")
 SHOT_USERS = ("user", "manager", "guest")
@@ -124,6 +125,10 @@ def is_text(value):
 
 def is_integer(value):
 	return isinstance(value, int) and not isinstance(value, bool)
+
+
+def is_date(value):
+	return isinstance(value, datetime.date) and not isinstance(value, datetime.datetime)
 
 
 def glob_to_regex(glob):
@@ -446,6 +451,8 @@ class Checker:
 			self.error(page.path, line("owner"), "'owner' must be a GitHub login or 'tbd'")
 		if "order" in data and not is_integer(data["order"]):
 			self.error(page.path, line("order"), "'order' must be an integer")
+		if "version" in data and not is_date(data["version"]):
+			self.error(page.path, line("version"), "'version' must be a date YYYY-MM-DD")
 
 	def check_requires(self, page, data):
 		if "requires" not in data:
