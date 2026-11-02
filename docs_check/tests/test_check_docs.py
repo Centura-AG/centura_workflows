@@ -78,6 +78,9 @@ class TestValid(DocsTestCase):
 	def test_valid_page(self):
 		self.assertEqual(self.check(self.valid_tree()), [])
 
+	def test_valid_version(self):
+		self.assertEqual(self.check(self.valid_tree(**{"client_docs/zahlungen-abgleichen.md": page(extra="version: 2026-10-26\n")})), [])
+
 	def test_valid_topic_folder_and_links(self):
 		files = self.valid_tree(
 			**{
@@ -186,6 +189,10 @@ class TestFrontmatter(DocsTestCase):
 
 	def test_bad_order(self):
 		self.assertError(self.broken(page(extra="order: high\n")), "'order' must be an integer")
+
+	def test_bad_version(self):
+		for value in ("'2026-10-26'", "26.10.2026", "2026-10-26 10:00:00", "1"):
+			self.assertError(self.broken(page(extra=f"version: {value}\n")), "'version' must be a date")
 
 	def test_requires_lists_own_app(self):
 		self.assertError(self.broken(page().replace("requires: []", "requires: [musterapp]")), "own app")
