@@ -15,6 +15,8 @@ The Frappe-stack apps (payments, erpnext, hrms) are installed without their desk
 
 An `additional_apps` entry is `org/repo` or `org/repo@ref`. Without `@ref` the app is fetched at the `frappe_branch` (`version-16`) if it has such a branch, else at the pull request's base branch, else at `develop`, else at its default branch. A pinned `@ref` has no fallback.
 
+`apt_packages` is a space-separated list of extra apt packages the app's tests need on the runner, for example `poppler-utils tesseract-ocr`. They are installed on every run, also when the bench cache is restored.
+
 Besides the bench inputs (`frappe_branch`, `install_apps`, `additional_apps`, ...) it has these coverage inputs:
 
 | Name | Type | Default | Meaning |
