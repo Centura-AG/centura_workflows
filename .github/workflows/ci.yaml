@@ -45,6 +45,14 @@ on:
         required: false
         type: string
         default: ''
+      apt_packages:
+        description: >-
+          Space-separated list of extra apt packages the app's tests need on the
+          runner, for example 'poppler-utils tesseract-ocr tesseract-ocr-deu'.
+          They are installed on every run, also when the bench cache is restored.
+        required: false
+        type: string
+        default: ''
       use_bench_cache:
         description: >-
           Cache the built bench (clones, venv, assets) and a dump of the test-site
@@ -275,7 +283,8 @@ jobs:
 
           sudo systemctl stop mysql || true
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libcups2-dev redis-server mariadb-client libmariadb-dev libcairo2-dev
+          # APT_PACKAGES is left unquoted on purpose: it is a space-separated list.
+          sudo apt-get install -y --no-install-recommends libcups2-dev redis-server mariadb-client libmariadb-dev libcairo2-dev $APT_PACKAGES
 
           pip install frappe-bench
 
@@ -499,6 +508,7 @@ jobs:
           INSTALL_APPS: ${{ inputs.install_apps }}
           APP_NAME: ${{ github.event.repository.name }}
           ADDITIONAL_APPS: ${{ inputs.additional_apps }}
+          APT_PACKAGES: ${{ inputs.apt_packages }}
           ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
           USE_BENCH_CACHE: ${{ inputs.use_bench_cache }}
           BENCH_CACHE_HIT: ${{ steps.bench-cache.outputs.cache-hit }}
