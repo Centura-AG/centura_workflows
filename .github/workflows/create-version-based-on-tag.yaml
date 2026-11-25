@@ -94,6 +94,10 @@ jobs:
           git config --global user.name "centura-tagger[bot]"
           git config --global user.email "centura-tagger[bot]@users.noreply.github.com"
           git switch ${{ steps.get-branch.outputs.branch }}
+          if git diff --quiet -- "${{ inputs.package_path }}/__init__.py"; then
+            echo "__version__ is already ${{ env.version }}, nothing to commit"
+            exit 0
+          fi
           git add "${{ inputs.package_path }}/__init__.py"
           git commit -m "chore: update __version__ to ${{ env.version }}"
           echo "STATUS ============"
