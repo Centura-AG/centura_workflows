@@ -433,6 +433,13 @@ jobs:
                   bench --verbose --site test_site install-app "$app_name"
               done
           fi
+
+          # bench build runs for frappe only, so the other apps have no MO files yet.
+          while read -r app || [ -n "$app" ]; do
+              if [ -d "apps/$app/$app/locale" ]; then
+                  bench compile-po-to-mo --app "$app"
+              fi
+          done < sites/apps.txt
           INSTALL_SH_EOF
           cat > ${GITHUB_WORKSPACE}/.github/helper/site_config.json <<'SITE_CONFIG_EOF'
           {
