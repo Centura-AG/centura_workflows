@@ -355,6 +355,15 @@ jobs:
               fi
           }
 
+          # erpnext ships Vue islands that a DocType save validates (Project).
+          # Its postinstall is skipped above, so they need their own install and build.
+          build_erpnext_islands() {
+              if [ "$with_erpnext" = true ] && [ -f apps/erpnext/islands/package.json ] \
+                  && ! ls apps/erpnext/erpnext/public/dist/island/*.js > /dev/null 2>&1; then
+                  (cd apps/erpnext/islands && yarn install && yarn build)
+              fi
+          }
+
           if [ "$BENCH_CACHE_HIT" = "true" ] && [ ! -f ~/frappe-bench/site_dump.sql.gz ]; then
               echo "Restored bench cache has no site_dump.sql.gz - rebuilding from scratch"
               rm -rf ~/frappe-bench
@@ -375,6 +384,7 @@ jobs:
               bench setup requirements --dev
 
               bench start &>> ~/frappe-bench/bench_start.log &
+              build_erpnext_islands
           else
               git clone "https://github.com/frappe/frappe" --branch "${frappebranch}" --depth 1
               bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
@@ -418,8 +428,10 @@ jobs:
                   bench --verbose --site test_site install-app hrms
               fi
 
+              wait "$build_pid" || true
+              build_erpnext_islands
+
               if [ "$USE_BENCH_CACHE" = "true" ]; then
-                  wait "$build_pid" || true
                   echo "Dumping test site database for bench cache"
                   mariadb-dump --host 127.0.0.1 --port 3306 -u root -proot --single-transaction --quick --default-character-set=utf8mb4 test_frappe | gzip > site_dump.sql.gz
               fi
@@ -433,6 +445,13 @@ jobs:
                   bench --verbose --site test_site install-app "$app_name"
               done
           fi
+
+          # bench build runs for frappe only, so the other apps have no MO files yet.
+          while read -r app || [ -n "$app" ]; do
+              if [ -d "apps/$app/$app/locale" ]; then
+                  bench compile-po-to-mo --app "$app"
+              fi
+          done < sites/apps.txt
           INSTALL_SH_EOF
           cat > ${GITHUB_WORKSPACE}/.github/helper/site_config.json <<'SITE_CONFIG_EOF'
           {
